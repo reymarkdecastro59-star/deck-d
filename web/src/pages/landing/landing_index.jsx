@@ -241,15 +241,16 @@ export default function Landing() {
             position: 'absolute',
             inset: 0,
             overflowX: 'hidden',
-            overflowY: current === 2 ? 'auto' : 'hidden',
+            overflowY: 'hidden',
           }}
         >
-          <SectionComp />
+          <SectionComp onNavigate={navigate} />
         </motion.div>
       </AnimatePresence>
 
-      {/* Section counter — bottom-left. Reads "01 / 03" */}
+      {/* Section counter — bottom-left. */}
       <div
+        className="section-counter"
         style={{
           position: 'absolute',
           bottom: '40px',

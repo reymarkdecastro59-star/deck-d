@@ -10,7 +10,7 @@ const headlineStyle = {
   whiteSpace: 'nowrap',
 }
 
-export default function Home() {
+export default function Home({ onNavigate }) {
   return (
     <section id="home" className="relative h-dvh overflow-hidden">
       {/* Left-to-right gradient — blends bg image into solid bg; stays opaque past 48vw where the image starts */}
@@ -174,8 +174,8 @@ export default function Home() {
             >
               GET STARTED
             </a>
-            <a
-              href="#about"
+            <button
+              onClick={() => onNavigate?.(1)}
               className="home-cta-btn"
               style={{
                 width: '154px',
@@ -192,13 +192,13 @@ export default function Home() {
                 lineHeight: 1,
                 letterSpacing: '1.2px',
                 color: '#C8C8E0',
-                textDecoration: 'none',
                 flexShrink: 0,
+                cursor: 'pointer',
                 transition: 'background 250ms ease, border-color 250ms ease',
               }}
             >
-              CONTACT US
-            </a>
+              LEARN MORE
+            </button>
           </div>
         </div>
       </div>

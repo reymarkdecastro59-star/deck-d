@@ -96,7 +96,13 @@
   }
 }
 
-/* ─── Responsive: Navbar ─── */
+/* ─── Navbar ─── */
+
+.nav-auth-btn:hover {
+  background: rgba(88, 125, 220, 0.18) !important;
+  border-color: rgba(88, 125, 220, 0.7) !important;
+}
+
 @media (max-width: 767px) {
   .nav-root {
     padding: 14px 20px !important;
@@ -108,6 +114,17 @@
 }
 
 /* ─── Responsive: Home section ─── */
+.home-cta-btn:hover {
+  filter: brightness(1.18);
+}
+
+/* Section counter: overlaps the glass card on mobile — hide it */
+@media (max-width: 639px) {
+  .section-counter {
+    display: none !important;
+  }
+}
+
 @media (max-width: 639px) {
   .home-content {
     padding: 90px 20px 44px !important;
@@ -140,9 +157,15 @@
   gap: 40px;
   grid-template-columns: 1fr;
 }
-@media (min-width: 1024px) {
+/* 2-col layout + library card from 768px so tablet doesn't show an empty right half */
+@media (min-width: 768px) {
   .about-grid {
     grid-template-columns: 1.1fr 0.9fr;
+    gap: 40px;
+  }
+}
+@media (min-width: 1024px) {
+  .about-grid {
     gap: 64px;
   }
 }
@@ -175,35 +198,35 @@
   .about-content {
     padding: 80px 44px !important;
   }
-  .about-library-card {
-    display: none !important;
-  }
 }
 
 /* ─── Responsive: Service section ─── */
+/* Mobile: carousel handles display — grid is never rendered */
 .features-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: 1fr;
-}
-@media (min-width: 640px) {
-  .features-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(3, 1fr);
 }
 @media (min-width: 1024px) {
   .features-grid {
     grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
     gap: 20px;
   }
 }
 @media (max-width: 639px) {
   .service-content {
-    padding: 80px 20px !important;
+    padding: 80px 20px 20px !important;
   }
 }
 @media (min-width: 640px) and (max-width: 1023px) {
   .service-content {
-    padding: 80px 44px !important;
+    padding: 80px 44px 60px !important;
+  }
+}
+@media (min-width: 1024px) {
+  .service-content {
+    padding: 88px 84px 60px !important;
   }
 }

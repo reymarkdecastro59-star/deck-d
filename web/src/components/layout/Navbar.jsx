@@ -109,6 +109,7 @@ export default function Navbar({ activeSection = 0, onNavigate }) {
           <a
             key={label}
             href={href}
+            className="nav-auth-btn"
             style={{
               width: '119px',
               height: '32px',

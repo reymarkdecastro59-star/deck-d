@@ -5,13 +5,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#07071a',
-        surface: '#0d0d2b',
-        'surface-2': '#13133a',
-        border: '#1e1e4a',
-        'text-primary': '#f1f5f9',
-        'text-secondary': '#94a3b8',
+        background: '#0A0918',
+        surface: '#1C1B34',
+        'surface-2': '#20203A',
+        border: '#1E1E4A',
+        'text-primary': '#FFFFFF',
+        'text-secondary': '#9A9AB8',
+        'text-muted': '#5F5F80',
         accent: {
+          blue: '#4C7DFF',
           cyan: '#22d3ee',
           purple: '#7c3aed',
           violet: '#a78bfa',
@@ -19,10 +21,7 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
-      },
-      backgroundImage: {
-        'gradient-brand': 'linear-gradient(135deg, #7c3aed, #22d3ee)',
+        mono: ['Intel One Mono', 'ui-monospace', 'monospace'],
       },
     },
   },
