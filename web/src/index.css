@@ -2,6 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes bgBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+/* Floating energy orbs — each moves in a different organic path.
+   Only transform + opacity are animated so these stay GPU-composited. */
+@keyframes orb1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.7;
+  }
+  25% {
+    transform: translate(4%, -7%) scale(1.1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate(-3%, 5%) scale(0.95);
+    opacity: 0.55;
+  }
+  75% {
+    transform: translate(6%, 2%) scale(1.05);
+    opacity: 0.8;
+  }
+}
+@keyframes orb2 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.6;
+  }
+  33% {
+    transform: translate(-5%, 6%) scale(1.12);
+    opacity: 0.85;
+  }
+  66% {
+    transform: translate(4%, -5%) scale(0.9);
+    opacity: 0.5;
+  }
+}
+@keyframes orb3 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate(-7%, 9%) scale(1.2);
+    opacity: 0.75;
+  }
+}
+
+/* dvh with 100vh fallback — browsers that don't understand dvh skip it and keep 100vh */
+.h-dvh {
+  height: 100vh;
+  height: 100dvh;
+}
+.min-h-dvh {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -15,5 +93,140 @@
 
   #root {
     @apply min-h-screen;
+  }
+}
+
+/* ─── Navbar ─── */
+
+.nav-auth-btn:hover {
+  background: rgba(88, 125, 220, 0.18) !important;
+  border-color: rgba(88, 125, 220, 0.7) !important;
+}
+
+@media (max-width: 767px) {
+  .nav-root {
+    padding: 14px 20px !important;
+  }
+  .nav-pill-btn {
+    width: 58px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* ─── Responsive: Home section ─── */
+.home-cta-btn:hover {
+  filter: brightness(1.18);
+}
+
+/* Section counter: overlaps the glass card on mobile — hide it */
+@media (max-width: 639px) {
+  .section-counter {
+    display: none !important;
+  }
+}
+
+@media (max-width: 639px) {
+  .home-content {
+    padding: 90px 20px 44px !important;
+  }
+  .home-glass-card {
+    right: 20px !important;
+    bottom: 20px !important;
+    width: calc(100vw - 40px) !important;
+  }
+  .home-cta-btn {
+    width: auto !important;
+    flex: 1 !important;
+  }
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  .home-content {
+    padding: 110px 44px 44px !important;
+  }
+  .home-glass-card {
+    width: 320px !important;
+    right: 44px !important;
+    bottom: 72px !important;
+  }
+}
+
+/* ─── Responsive: About section ─── */
+.about-grid {
+  display: grid;
+  align-items: center;
+  gap: 40px;
+  grid-template-columns: 1fr;
+}
+/* 2-col layout + library card from 768px so tablet doesn't show an empty right half */
+@media (min-width: 768px) {
+  .about-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 40px;
+  }
+}
+@media (min-width: 1024px) {
+  .about-grid {
+    gap: 64px;
+  }
+}
+@media (max-width: 767px) {
+  .about-content {
+    padding: 80px 20px !important;
+  }
+  .about-library-card {
+    display: none !important;
+  }
+  .about-stats > div {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+  .about-stats > div:first-child {
+    padding-left: 0 !important;
+  }
+}
+@media (max-width: 479px) {
+  .about-stats {
+    flex-direction: column !important;
+    gap: 16px;
+  }
+  .about-stats > div {
+    padding: 0 !important;
+    border-left: none !important;
+  }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .about-content {
+    padding: 80px 44px !important;
+  }
+}
+
+/* ─── Responsive: Service section ─── */
+/* Mobile: carousel handles display — grid is never rendered */
+.features-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+@media (min-width: 1024px) {
+  .features-grid {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 20px;
+  }
+}
+@media (max-width: 639px) {
+  .service-content {
+    padding: 80px 20px 20px !important;
+  }
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  .service-content {
+    padding: 80px 44px 60px !important;
+  }
+}
+@media (min-width: 1024px) {
+  .service-content {
+    padding: 88px 84px 60px !important;
   }
 }
