@@ -3,7 +3,7 @@ import pytest
 import shared.db as db_module
 from shared.models import Session
 from handlers.dashboard import handler
-from tests.unit.conftest import make_event, USER_ID
+from tests.unit.conftest import make_event, USER_ID, FakeLambdaContext
 
 
 def _seed(game_name: str, duration_sec: int, session_id: str, started_at: int):
@@ -26,7 +26,7 @@ def test_dashboard_aggregation(ddb_table):
     _seed("Valorant", 7200, "s3", 1_700_020_000)
 
     event = make_event(method="GET")
-    resp = handler(event, None)
+    resp = handler(event, FakeLambdaContext())
     assert resp["statusCode"] == 200
     body = json.loads(resp["body"])
 
@@ -45,7 +45,7 @@ def test_dashboard_aggregation(ddb_table):
 
 def test_dashboard_empty(ddb_table):
     event = make_event(method="GET")
-    resp = handler(event, None)
+    resp = handler(event, FakeLambdaContext())
     assert resp["statusCode"] == 200
     body = json.loads(resp["body"])
     assert body["total_sessions"] == 0

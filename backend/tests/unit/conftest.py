@@ -9,6 +9,14 @@ USER_ID = "user-abc-123"
 USER_EMAIL = "test@example.com"
 
 
+class FakeLambdaContext:
+    """Minimal Lambda context substitute for unit tests."""
+    function_name = "test-function"
+    memory_limit_in_mb = 256
+    invoked_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:test-function"
+    aws_request_id = "test-request-id"
+
+
 @pytest.fixture(scope="function")
 def aws_credentials():
     os.environ["AWS_ACCESS_KEY_ID"] = "testing"
