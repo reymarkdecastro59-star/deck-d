@@ -1,6 +1,7 @@
-import json
+﻿import json
 from collections import defaultdict
 from shared.auth import get_user_id
+from shared.cors import CORS_HEADERS
 from shared.db import get_sessions
 
 
@@ -22,12 +23,7 @@ def handler(event: dict, context) -> dict:
 
     return {
         "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,OPTIONS",
-        },
+        "headers": CORS_HEADERS,
         "body": json.dumps({
             "total_sessions": len(sessions),
             "total_hours": round(total_sec / 3600, 2),

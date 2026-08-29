@@ -1,15 +1,23 @@
-import json
+﻿import json
 from shared.auth import get_user_id, get_user_email
-from shared.db import put_session, get_sessions, get_or_create_profile
+from shared.cors import CORS_HEADERS
+from shared.db import put_session, get_sessions, get_or_create_profile, delete_session, update_session_label
 from shared.models import Session
 
 
 def handler(event: dict, context) -> dict:
     method = event["httpMethod"]
+    path_params = event.get("pathParameters") or {}
+    session_id = path_params.get("session_id")
+
     if method == "POST":
         return _post_session(event)
     if method == "GET":
         return _get_sessions(event)
+    if method == "DELETE" and session_id:
+        return _delete_session(event, session_id)
+    if method == "PATCH" and session_id:
+        return _patch_session(event, session_id)
     return _resp(405, {"error": "Method not allowed"})
 
 
@@ -45,14 +53,29 @@ def _get_sessions(event: dict) -> dict:
     return _resp(200, {"sessions": [s.to_item() for s in sessions]})
 
 
+def _delete_session(event: dict, session_id: str) -> dict:
+    user_id = get_user_id(event)
+    deleted = delete_session(user_id, session_id)
+    if not deleted:
+        return _resp(404, {"error": "Session not found"})
+    return _resp(204, {})
+
+
+def _patch_session(event: dict, session_id: str) -> dict:
+    user_id = get_user_id(event)
+    body = json.loads(event.get("body") or "{}")
+    label = body.get("label")
+    if label is None:
+        return _resp(400, {"error": "Missing field: label"})
+    session = update_session_label(user_id, session_id, label)
+    if session is None:
+        return _resp(404, {"error": "Session not found"})
+    return _resp(200, {"session": session.to_item()})
+
+
 def _resp(status: int, body: dict) -> dict:
     return {
         "statusCode": status,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        },
+        "headers": CORS_HEADERS,
         "body": json.dumps(body),
     }

@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+﻿AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: DECK'D backend - gaming habit tracker
 
@@ -21,7 +21,7 @@ Parameters:
 
 Resources:
 
-  # ── Auth ──────────────────────────────────────────────────────────────────
+  # -- Auth --------------------------------------------------------------------
 
   UserPool:
     Type: AWS::Cognito::UserPool
@@ -51,7 +51,7 @@ Resources:
         AccessToken: minutes
         RefreshToken: days
 
-  # ── Database ──────────────────────────────────────────────────────────────
+  # -- Database ----------------------------------------------------------------
 
   DeckdTable:
     Type: AWS::DynamoDB::Table
@@ -67,10 +67,6 @@ Resources:
           AttributeType: S
         - AttributeName: gsi1sk
           AttributeType: S
-        - AttributeName: gsi2pk
-          AttributeType: S
-        - AttributeName: gsi2sk
-          AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
@@ -85,16 +81,8 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        - IndexName: gsi2
-          KeySchema:
-            - AttributeName: gsi2pk
-              KeyType: HASH
-            - AttributeName: gsi2sk
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
 
-  # ── API Gateway ───────────────────────────────────────────────────────────
+  # -- API Gateway -------------------------------------------------------------
 
   Api:
     Type: AWS::Serverless::Api
@@ -102,7 +90,7 @@ Resources:
       Name: !Sub deckd-api-${Stage}
       StageName: !Ref Stage
       Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowMethods: "'GET,POST,DELETE,PATCH,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
       Auth:
@@ -111,7 +99,7 @@ Resources:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
 
-  # ── Lambda Functions ──────────────────────────────────────────────────────
+  # -- Lambda Functions --------------------------------------------------------
 
   SessionsFunction:
     Type: AWS::Serverless::Function
@@ -135,6 +123,18 @@ Resources:
             RestApiId: !Ref Api
             Path: /sessions
             Method: GET
+        DeleteSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /sessions/{session_id}
+            Method: DELETE
+        PatchSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /sessions/{session_id}
+            Method: PATCH
 
   DashboardFunction:
     Type: AWS::Serverless::Function
@@ -153,7 +153,30 @@ Resources:
             Path: /dashboard
             Method: GET
 
-# ── Outputs ───────────────────────────────────────────────────────────────
+  ProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-profile-${Stage}
+      CodeUri: src/
+      Handler: handlers.profile.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /profile
+            Method: GET
+        PatchProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /profile
+            Method: PATCH
+
+# -- Outputs ------------------------------------------------------------------
 
 Outputs:
   ApiUrl:
