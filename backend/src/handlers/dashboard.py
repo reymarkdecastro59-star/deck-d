@@ -22,7 +22,12 @@ def handler(event: dict, context) -> dict:
 
     return {
         "statusCode": 200,
-        "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "GET,OPTIONS",
+        },
         "body": json.dumps({
             "total_sessions": len(sessions),
             "total_hours": round(total_sec / 3600, 2),

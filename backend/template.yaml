@@ -101,6 +101,10 @@ Resources:
     Properties:
       Name: !Sub deckd-api-${Stage}
       StageName: !Ref Stage
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
