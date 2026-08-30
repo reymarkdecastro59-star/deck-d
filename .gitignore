@@ -4,7 +4,11 @@ agent/config.py
 __pycache__/
 *.pyc
 backend/.aws-sam/
-agent/.claude-flow/
+.claude/
+.claude-flow/
+CLAUDE.md
+docs/
+figma/
 web/node_modules/
 web/dist/
 .DS_Store
