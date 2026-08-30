@@ -1,0 +1,193 @@
+﻿AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DECK'D backend - gaming habit tracker
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 10
+    MemorySize: 256
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref DeckdTable
+        USER_POOL_ID: !Ref UserPool
+        STAGE: !Ref Stage
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Resources:
+
+  # -- Auth --------------------------------------------------------------------
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub deckd-users-${Stage}
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireNumbers: true
+          RequireSymbols: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub deckd-client-${Stage}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AccessTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        RefreshToken: days
+
+  # -- Database ----------------------------------------------------------------
+
+  DeckdTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub deckd-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # -- API Gateway -------------------------------------------------------------
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub deckd-api-${Stage}
+      StageName: !Ref Stage
+      Cors:
+        AllowMethods: "'GET,POST,DELETE,PATCH,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+
+  # -- Lambda Functions --------------------------------------------------------
+
+  SessionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-sessions-${Stage}
+      CodeUri: src/
+      Handler: handlers.sessions.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        PostSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /sessions
+            Method: POST
+        GetSessions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /sessions
+            Method: GET
+        DeleteSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /sessions/{session_id}
+            Method: DELETE
+        PatchSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /sessions/{session_id}
+            Method: PATCH
+
+  DashboardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-dashboard-${Stage}
+      CodeUri: src/
+      Handler: handlers.dashboard.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetDashboard:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /dashboard
+            Method: GET
+
+  ProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-profile-${Stage}
+      CodeUri: src/
+      Handler: handlers.profile.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /profile
+            Method: GET
+        PatchProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /profile
+            Method: PATCH
+
+# -- Outputs ------------------------------------------------------------------
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Stage}
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito App Client ID
+    Value: !Ref UserPoolClient
+  TableName:
+    Description: DynamoDB table name
+    Value: !Ref DeckdTable

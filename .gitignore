@@ -1,24 +1,15 @@
-# Dependencies
+﻿# Agent config (contains live API URL + Cognito IDs - keep local)
+agent/config.py
+
+__pycache__/
+*.pyc
+backend/.aws-sam/
+.claude/
+.claude-flow/
+CLAUDE.md
+docs/
+figma/
 web/node_modules/
-
-# Build output
 web/dist/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Editor / OS
 .DS_Store
 Thumbs.db
-*.local
-
-# Claude (settings + memory — not for source control)
-.claude/
-
-# Planning docs (commit when ready)
-docs/
-
-# Figma binary (large, not needed in source control)
-figma/*.fig

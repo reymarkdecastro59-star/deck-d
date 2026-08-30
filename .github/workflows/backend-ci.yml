@@ -1,0 +1,42 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches:
+      - main
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            backend/src/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/src/requirements.txt -r backend/requirements-dev.txt
+
+      - name: Run tests
+        run: cd backend && pytest -q
+
+      - name: Install AWS SAM CLI
+        run: pip install aws-sam-cli
+
+      - name: Validate SAM template
+        run: cd backend && sam validate --lint
+
+      - name: SAM build
+        run: cd backend && sam build
