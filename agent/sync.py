@@ -1,5 +1,5 @@
 ﻿import requests
-from auth import get_access_token
+from auth import get_id_token
 from session import get_unsynced, mark_synced
 from config import API_URL
 
@@ -10,7 +10,7 @@ def sync_sessions() -> tuple[int, int]:
         return 0, 0
 
     try:
-        token = get_access_token()
+        token = get_id_token()
     except RuntimeError:
         return 0, len(pending)
 

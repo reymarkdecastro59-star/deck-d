@@ -32,7 +32,7 @@ def login(email: str, password: str) -> dict:
     )
     result = resp["AuthenticationResult"]
     _token_cache.update({
-        "access_token": result["AccessToken"],
+        "id_token": result["IdToken"],
         "refresh_token": result["RefreshToken"],
         "expires_at": int(time.time()) + result["ExpiresIn"] - 600,  # refresh 10min early
     })
@@ -40,15 +40,15 @@ def login(email: str, password: str) -> dict:
     return _token_cache
 
 
-def get_access_token() -> str:
+def get_id_token() -> str:
+    # API Gateway's Cognito authorizer validates ID tokens, not access tokens.
     _load_cache()
-    if not _token_cache:
+    if not _token_cache.get("id_token"):
         raise RuntimeError("Not logged in. Run login() first.")
 
     if time.time() < _token_cache.get("expires_at", 0):
-        return _token_cache["access_token"]
+        return _token_cache["id_token"]
 
-    # Refresh
     client = boto3.client("cognito-idp", region_name=REGION)
     resp = client.initiate_auth(
         AuthFlow="REFRESH_TOKEN_AUTH",
@@ -57,13 +57,13 @@ def get_access_token() -> str:
     )
     result = resp["AuthenticationResult"]
     _token_cache.update({
-        "access_token": result["AccessToken"],
+        "id_token": result["IdToken"],
         "expires_at": int(time.time()) + result["ExpiresIn"] - 600,
     })
     _save_cache()
-    return _token_cache["access_token"]
+    return _token_cache["id_token"]
 
 
 def is_logged_in() -> bool:
     _load_cache()
-    return bool(_token_cache)
+    return bool(_token_cache.get("id_token"))
