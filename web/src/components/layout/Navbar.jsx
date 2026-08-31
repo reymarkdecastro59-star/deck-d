@@ -1,4 +1,6 @@
 import { motion, LayoutGroup } from 'motion/react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '@/auth/AuthContext'
 
 const NAV_ITEMS = [
   { label: 'Home', index: 0 },
@@ -6,7 +8,36 @@ const NAV_ITEMS = [
   { label: 'Services', index: 2 },
 ]
 
+const AUTH_BTN_STYLE = {
+  width: '119px',
+  height: '32px',
+  borderRadius: '9px',
+  background: 'rgba(5, 8, 28, 0.82)',
+  border: '1px solid rgba(88, 125, 220, 0.42)',
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontFamily: 'Inter, sans-serif',
+  fontSize: '14px',
+  fontWeight: 500,
+  lineHeight: 1,
+  color: '#E5E5F2',
+  textDecoration: 'none',
+  cursor: 'pointer',
+  transition: 'background 250ms ease, border-color 250ms ease',
+}
+
 export default function Navbar({ activeSection = 0, onNavigate }) {
+  const { isAuthenticated, email, logout } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/')
+  }
+
   return (
     <nav
       className="nav-root fixed left-0 right-0 top-0 z-50 flex items-center justify-between"
@@ -101,38 +132,35 @@ export default function Navbar({ activeSection = 0, onNavigate }) {
       </LayoutGroup>
 
       {/* Auth actions */}
-      <div className="hidden md:flex" style={{ gap: '14px' }}>
-        {[
-          { label: 'Register', href: '/register' },
-          { label: 'Log In', href: '/login' },
-        ].map(({ label, href }) => (
-          <a
-            key={label}
-            href={href}
-            className="nav-auth-btn"
-            style={{
-              width: '119px',
-              height: '32px',
-              borderRadius: '9px',
-              background: 'rgba(5, 8, 28, 0.82)',
-              border: '1px solid rgba(88, 125, 220, 0.42)',
-              backdropFilter: 'blur(4px)',
-              WebkitBackdropFilter: 'blur(4px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'Inter, sans-serif',
-              fontSize: '14px',
-              fontWeight: 500,
-              lineHeight: 1,
-              color: '#E5E5F2',
-              textDecoration: 'none',
-              transition: 'background 250ms ease, border-color 250ms ease',
-            }}
-          >
-            {label}
-          </a>
-        ))}
+      <div className="hidden items-center md:flex" style={{ gap: '14px' }}>
+        {isAuthenticated ? (
+          <>
+            <span
+              style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '13px',
+                color: '#9A9AB8',
+              }}
+            >
+              {email}
+            </span>
+            <Link to="/dashboard" className="nav-auth-btn" style={AUTH_BTN_STYLE}>
+              Dashboard
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="nav-auth-btn"
+              style={AUTH_BTN_STYLE}
+            >
+              Sign out
+            </button>
+          </>
+        ) : (
+          <Link to="/login" className="nav-auth-btn" style={AUTH_BTN_STYLE}>
+            Log In
+          </Link>
+        )}
       </div>
     </nav>
   )

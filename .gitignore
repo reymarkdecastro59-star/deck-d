@@ -11,5 +11,7 @@ docs/
 figma/
 web/node_modules/
 web/dist/
+.env.local
+.env.*.local
 .DS_Store
 Thumbs.db

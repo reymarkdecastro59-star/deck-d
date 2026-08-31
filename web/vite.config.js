@@ -8,4 +8,7 @@ export default defineConfig({
       '@': `${import.meta.dirname}/src`,
     },
   },
+  define: {
+    global: 'globalThis',
+  },
 })
