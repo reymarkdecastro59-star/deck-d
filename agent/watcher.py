@@ -1,8 +1,9 @@
 ﻿import psutil
 import time
 import threading
-from config import TRACKED_GAMES, POLL_INTERVAL_SEC
+from config import POLL_INTERVAL_SEC
 from session import open_session, close_session
+from games import get_tracked
 
 _active: dict[str, str] = {}  # exe -> session_id
 _lock = threading.Lock()
@@ -13,10 +14,11 @@ _thread = None
 def _poll():
     while _running:
         running_exes = {p.name() for p in psutil.process_iter(["name"])}
+        tracked = get_tracked()
 
         with _lock:
             # Detect new game starts
-            for exe, name in TRACKED_GAMES.items():
+            for exe, name in tracked.items():
                 if exe in running_exes and exe not in _active:
                     sid = open_session(exe, name)
                     _active[exe] = sid
