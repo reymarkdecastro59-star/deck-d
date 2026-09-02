@@ -69,13 +69,20 @@ def make_event(
     query_params: dict | None = None,
     user_id: str = USER_ID,
     email: str = USER_EMAIL,
+    resource: str | None = None,
+    raw_body: str | None = None,
 ) -> dict:
     import json
+    if raw_body is not None:
+        serialized_body = raw_body
+    else:
+        serialized_body = json.dumps(body) if body is not None else None
     return {
         "httpMethod": method,
+        "resource": resource,
         "pathParameters": path_params,
         "queryStringParameters": query_params,
-        "body": json.dumps(body) if body is not None else None,
+        "body": serialized_body,
         "requestContext": {
             "authorizer": {
                 "claims": {

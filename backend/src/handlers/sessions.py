@@ -3,9 +3,9 @@ from aws_lambda_powertools import Logger
 from pydantic import ValidationError
 from shared.auth import get_user_id, get_user_email
 from shared.cors import CORS_HEADERS
-from shared.db import put_session, get_sessions, get_or_create_profile, delete_session, update_session_label
+from shared.db import put_session, put_sessions_batch, get_sessions, get_or_create_profile, delete_session, update_session_label
 from shared.models import Session
-from shared.schemas import SessionCreate, SessionPatch
+from shared.schemas import SessionCreate, SessionBatchCreate, SessionPatch
 
 logger = Logger(service="deckd-sessions")
 
@@ -18,6 +18,9 @@ def handler(event: dict, context) -> dict:
         session_id = path_params.get("session_id")
 
         if method == "POST":
+            resource = event.get("resource") or ""
+            if resource.endswith("/batch"):
+                return _post_batch(event)
             return _post_session(event)
         if method == "GET":
             return _get_sessions(event)
@@ -53,6 +56,41 @@ def _post_session(event: dict) -> dict:
     put_session(session)
     logger.info("session_created", session_id=session.session_id, game_name=session.game_name, duration_sec=session.duration_sec)
     return _resp(201, {"session_id": session.session_id})
+
+
+def _post_batch(event: dict) -> dict:
+    user_id = get_user_id(event)
+    get_or_create_profile(user_id, get_user_email(event))
+
+    try:
+        raw = json.loads(event.get("body") or "null")
+    except (json.JSONDecodeError, ValueError):
+        return _resp(400, {"error": "invalid_json"})
+
+    if raw is None:
+        return _resp(400, {"error": "invalid_json"})
+
+    try:
+        data = SessionBatchCreate.model_validate(raw)
+    except ValidationError as e:
+        return _resp(400, {"error": "validation_failed", "details": e.errors()})
+
+    sessions = [
+        Session(
+            user_id=user_id,
+            session_id=item.session_id,
+            game_exe=item.game_exe,
+            game_name=item.game_name,
+            started_at=item.started_at,
+            ended_at=item.ended_at,
+            duration_sec=item.duration_sec,
+            label=item.label,
+        )
+        for item in data.sessions
+    ]
+    put_sessions_batch(sessions)
+    logger.info("sessions_batch_created", user_id=user_id, count=len(sessions))
+    return _resp(201, {"count": len(sessions), "session_ids": [s.session_id for s in sessions]})
 
 
 def _get_sessions(event: dict) -> dict:

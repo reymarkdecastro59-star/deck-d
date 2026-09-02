@@ -11,6 +11,10 @@ class SessionCreate(BaseModel):
     label: str = "tracked"
 
 
+class SessionBatchCreate(BaseModel):
+    sessions: list[SessionCreate] = Field(min_length=1, max_length=25)
+
+
 class SessionPatch(BaseModel):
     label: str = Field(min_length=1, max_length=64)
 

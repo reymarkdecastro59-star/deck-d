@@ -19,6 +19,12 @@ def put_session(session: Session) -> None:
     get_table().put_item(Item=session.to_item())
 
 
+def put_sessions_batch(sessions: list[Session]) -> None:
+    with get_table().batch_writer() as writer:
+        for session in sessions:
+            writer.put_item(Item=session.to_item())
+
+
 def get_sessions(user_id: str, limit: int = 100) -> list[Session]:
     resp = get_table().query(
         KeyConditionExpression=Key("pk").eq(f"USER#{user_id}") & Key("sk").begins_with("SESSION#"),
