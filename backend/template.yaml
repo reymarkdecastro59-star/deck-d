@@ -19,6 +19,11 @@ Parameters:
     Default: dev
     AllowedValues: [dev, prod]
 
+  RawgApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
 Resources:
 
   # -- Auth --------------------------------------------------------------------
@@ -68,6 +73,10 @@ Resources:
           AttributeType: S
         - AttributeName: gsi1sk
           AttributeType: S
+        - AttributeName: gsi2pk
+          AttributeType: S
+        - AttributeName: gsi2sk
+          AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
@@ -79,6 +88,14 @@ Resources:
             - AttributeName: gsi1pk
               KeyType: HASH
             - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi2
+          KeySchema:
+            - AttributeName: gsi2pk
+              KeyType: HASH
+            - AttributeName: gsi2sk
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -200,6 +217,28 @@ Resources:
             RestApiId: !Ref Api
             Path: /profile
             Method: PATCH
+
+  RefreshMetadataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-refresh-metadata-${Stage}
+      CodeUri: src/
+      Handler: handlers.refresh_metadata.handler
+      Timeout: 900
+      MemorySize: 512
+      Environment:
+        Variables:
+          RAWG_API_KEY: !Ref RawgApiKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        DailyCron:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 3 * * ? *)
+            Name: !Sub deckd-refresh-metadata-daily-${Stage}
+            Description: Daily RAWG metadata refresh at 03:00 UTC
 
 # -- Outputs ------------------------------------------------------------------
 

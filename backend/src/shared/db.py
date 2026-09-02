@@ -4,6 +4,69 @@ import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from .models import Session, UserProfile
 
+# ---------------------------------------------------------------------------
+# Game metadata helpers
+# ---------------------------------------------------------------------------
+
+
+def put_game_metadata(metadata: dict) -> None:
+    get_table().put_item(Item=metadata)
+
+
+def get_game_metadata(exe_lower: str) -> Optional[dict]:
+    resp = get_table().get_item(Key={"pk": f"GAME#{exe_lower}", "sk": "METADATA"})
+    return resp.get("Item")
+
+
+def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
+    """Return all GAME# metadata items, oldest fetched_at first (via gsi2 sort)."""
+    items: list[dict] = []
+    kwargs: dict = {
+        "IndexName": "gsi2",
+        "KeyConditionExpression": Key("gsi2pk").eq("GAME"),
+        "ScanIndexForward": True,
+    }
+    while True:
+        resp = get_table().query(**kwargs)
+        items.extend(resp.get("Items", []))
+        if len(items) >= max_items:
+            items = items[:max_items]
+            break
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    return items
+
+
+def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[str]:
+    """
+    Scan all SESSION# items with started_at >= since_epoch.
+    Returns the distinct lowercased game_exe values seen.
+    Background job path — not per-request.
+    """
+    seen: set[str] = set()
+    count = 0
+    kwargs: dict = {
+        "FilterExpression": (
+            Attr("sk").begins_with("SESSION#") & Attr("started_at").gte(since_epoch)
+        ),
+    }
+    while True:
+        resp = get_table().scan(**kwargs)
+        for item in resp.get("Items", []):
+            exe = item.get("game_exe", "").lower()
+            if exe and exe not in seen:
+                seen.add(exe)
+            count += 1
+            if count >= max_items:
+                return seen
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    return seen
+
 _table = None
 
 
