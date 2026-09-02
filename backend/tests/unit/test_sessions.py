@@ -3,7 +3,7 @@ import pytest
 import shared.db as db_module
 from shared.models import Session
 from handlers.sessions import handler
-from tests.unit.conftest import make_event, USER_ID, FakeLambdaContext
+from tests.unit.conftest import make_event, USER_ID, USER_EMAIL, FakeLambdaContext
 
 
 def _seed_session(session_id="s1", started_at=1_700_000_000):
@@ -136,3 +136,138 @@ def test_post_session_empty_body(ddb_table):
     resp = handler(event, FakeLambdaContext())
     assert resp["statusCode"] == 400
     assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+# ---------------------------------------------------------------------------
+# POST /sessions/batch
+# ---------------------------------------------------------------------------
+
+def _make_session_payload(
+    session_id: str = "s1",
+    started_at: int = 1_700_000_000,
+    game_exe: str = "game.exe",
+    game_name: str = "My Game",
+) -> dict:
+    return {
+        "session_id": session_id,
+        "game_exe": game_exe,
+        "game_name": game_name,
+        "started_at": started_at,
+        "ended_at": started_at + 3600,
+        "duration_sec": 3600,
+        "label": "tracked",
+    }
+
+
+def _batch_event(body: dict | None = None, raw_body: str | None = None) -> dict:
+    return make_event(
+        method="POST",
+        body=body,
+        resource="/sessions/batch",
+        raw_body=raw_body,
+    )
+
+
+def test_batch_happy_path(ddb_table):
+    """3 valid sessions → 201, count=3, all 3 persisted."""
+    sessions_payload = [
+        _make_session_payload("s1", 1_700_000_000),
+        _make_session_payload("s2", 1_700_010_000),
+        _make_session_payload("s3", 1_700_020_000),
+    ]
+    event = _batch_event(body={"sessions": sessions_payload})
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+    body = json.loads(resp["body"])
+    assert body["count"] == 3
+    assert set(body["session_ids"]) == {"s1", "s2", "s3"}
+    # Verify all 3 are in DynamoDB
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert len(stored) == 3
+
+
+def test_batch_invalid_json(ddb_table):
+    """Non-JSON body → 400 invalid_json."""
+    event = _batch_event(raw_body="not-json{{")
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "invalid_json"
+
+
+def test_batch_missing_fields(ddb_table):
+    """One session missing session_id → 400 validation_failed, nothing written."""
+    bad_session = {
+        "game_exe": "game.exe",
+        "game_name": "My Game",
+        "started_at": 1_700_000_000,
+        "ended_at": 1_700_003_600,
+        "duration_sec": 3600,
+        # session_id is missing
+    }
+    event = _batch_event(body={"sessions": [bad_session]})
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    body = json.loads(resp["body"])
+    assert body["error"] == "validation_failed"
+    # Nothing should have been written
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert stored == []
+
+
+def test_batch_empty_list(ddb_table):
+    """Empty sessions list → 400 validation_failed."""
+    event = _batch_event(body={"sessions": []})
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_batch_oversize(ddb_table):
+    """26 sessions (over the 25-item cap) → 400 validation_failed."""
+    sessions_payload = [
+        _make_session_payload(f"s{i}", 1_700_000_000 + i * 1000)
+        for i in range(26)
+    ]
+    event = _batch_event(body={"sessions": sessions_payload})
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_batch_duplicate_session_ids_last_wins(ddb_table):
+    """Two sessions with the same session_id AND same started_at share the same sk.
+    The second put_item overwrites the first; only 1 item persists."""
+    shared_started_at = 1_700_000_000
+    first = _make_session_payload("dup", shared_started_at, game_name="First Game")
+    second = _make_session_payload("dup", shared_started_at, game_name="Second Game")
+    # Distinct game_name so we can tell which one survived
+    first["game_name"] = "First Game"
+    second["game_name"] = "Second Game"
+
+    event = _batch_event(body={"sessions": [first, second]})
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+    body = json.loads(resp["body"])
+    assert body["count"] == 2  # client sent 2; we wrote 2 (second silently overwrites)
+
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert len(stored) == 1
+    assert stored[0].game_name == "Second Game"
+
+
+def test_batch_creates_profile(ddb_table):
+    """A fresh user with no profile should have one created by the batch call."""
+    fresh_user_id = "brand-new-user"
+    fresh_email = "fresh@example.com"
+    event = make_event(
+        method="POST",
+        resource="/sessions/batch",
+        body={"sessions": [_make_session_payload("s1")]},
+        user_id=fresh_user_id,
+        email=fresh_email,
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+    profile = db_module.get_profile(fresh_user_id)
+    assert profile is not None
+    assert profile.email == fresh_email

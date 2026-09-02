@@ -118,6 +118,12 @@ Resources:
             RestApiId: !Ref Api
             Path: /sessions
             Method: POST
+        PostSessionBatch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /sessions/batch
+            Method: POST
         GetSessions:
           Type: Api
           Properties:
