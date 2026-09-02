@@ -160,6 +160,24 @@ Resources:
             Path: /dashboard
             Method: GET
 
+  ExportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-export-${Stage}
+      CodeUri: src/
+      Handler: handlers.export.handler
+      Timeout: 29
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetExport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /export
+            Method: GET
+
   ProfileFunction:
     Type: AWS::Serverless::Function
     Properties:

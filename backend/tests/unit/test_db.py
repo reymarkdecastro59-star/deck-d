@@ -125,3 +125,19 @@ def test_get_sessions_in_range_empty(ddb_table):
 
     results = db_module.get_sessions_in_range("u1", 1_700_100_000, 1_700_200_000)
     assert results == []
+
+
+# ---------------------------------------------------------------------------
+# iter_all_sessions — pagination test
+# ---------------------------------------------------------------------------
+
+def test_iter_all_sessions_paginates(ddb_table):
+    """Seed 150 sessions (exceeds any single DDB page); iter_all_sessions must return all 150."""
+    base_ts = 1_700_000_000
+    for i in range(150):
+        db_module.put_session(_session_at(f"s{i}", base_ts + i))
+
+    results = db_module.iter_all_sessions("u1")
+    assert len(results) == 150
+    # Results should be newest-first (ScanIndexForward=False)
+    assert results[0].started_at >= results[-1].started_at
