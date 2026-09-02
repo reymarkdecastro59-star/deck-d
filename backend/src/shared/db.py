@@ -34,6 +34,26 @@ def get_sessions(user_id: str, limit: int = 100) -> list[Session]:
     return [Session.from_item(item) for item in resp.get("Items", [])]
 
 
+def iter_all_sessions(user_id: str, max_items: int = 10_000) -> list[Session]:
+    """Return all sessions for a user, newest first, up to max_items (safety cap)."""
+    items: list[dict] = []
+    kwargs: dict = {
+        "KeyConditionExpression": Key("pk").eq(f"USER#{user_id}") & Key("sk").begins_with("SESSION#"),
+        "ScanIndexForward": False,
+    }
+    while True:
+        resp = get_table().query(**kwargs)
+        items.extend(resp.get("Items", []))
+        if len(items) >= max_items:
+            items = items[:max_items]
+            break
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    return [Session.from_item(item) for item in items]
+
+
 def get_sessions_in_range(user_id: str, from_ts: int, to_ts: int, limit: int = 500) -> list[Session]:
     resp = get_table().query(
         KeyConditionExpression=(
