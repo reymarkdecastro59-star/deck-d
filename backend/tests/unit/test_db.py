@@ -81,3 +81,47 @@ def test_update_profile(ddb_table):
 def test_update_profile_not_found(ddb_table):
     result = db_module.update_profile("ghost", email="x@x.com")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# get_sessions_in_range
+# ---------------------------------------------------------------------------
+
+def _session_at(session_id: str, started_at: int) -> Session:
+    return Session(
+        user_id="u1",
+        session_id=session_id,
+        game_exe="game.exe",
+        game_name="My Game",
+        started_at=started_at,
+        ended_at=started_at + 3600,
+        duration_sec=3600,
+        label="tracked",
+    )
+
+
+def test_get_sessions_in_range_filters_by_time(ddb_table):
+    db_module.put_session(_session_at("early", 1_700_000_000))
+    db_module.put_session(_session_at("middle", 1_700_010_000))
+    db_module.put_session(_session_at("late", 1_700_020_000))
+
+    results = db_module.get_sessions_in_range("u1", 1_700_005_000, 1_700_015_000)
+    assert len(results) == 1
+    assert results[0].session_id == "middle"
+
+
+def test_get_sessions_in_range_inclusive_bounds(ddb_table):
+    db_module.put_session(_session_at("at-from", 1_700_000_000))
+    db_module.put_session(_session_at("between", 1_700_010_000))
+    db_module.put_session(_session_at("at-to", 1_700_020_000))
+
+    results = db_module.get_sessions_in_range("u1", 1_700_000_000, 1_700_020_000)
+    session_ids = {r.session_id for r in results}
+    assert session_ids == {"at-from", "between", "at-to"}
+
+
+def test_get_sessions_in_range_empty(ddb_table):
+    db_module.put_session(_session_at("s1", 1_700_000_000))
+
+    results = db_module.get_sessions_in_range("u1", 1_700_100_000, 1_700_200_000)
+    assert results == []

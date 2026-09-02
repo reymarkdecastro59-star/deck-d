@@ -28,6 +28,18 @@ def get_sessions(user_id: str, limit: int = 100) -> list[Session]:
     return [Session.from_item(item) for item in resp.get("Items", [])]
 
 
+def get_sessions_in_range(user_id: str, from_ts: int, to_ts: int, limit: int = 500) -> list[Session]:
+    resp = get_table().query(
+        KeyConditionExpression=(
+            Key("pk").eq(f"USER#{user_id}")
+            & Key("sk").between(f"SESSION#{from_ts}", f"SESSION#{to_ts + 1}")
+        ),
+        ScanIndexForward=False,
+        Limit=limit,
+    )
+    return [Session.from_item(item) for item in resp.get("Items", [])]
+
+
 def _find_session_item(user_id: str, session_id: str) -> Optional[dict]:
     """Query by pk + sk prefix, filter by session_id to get the full item."""
     resp = get_table().query(
