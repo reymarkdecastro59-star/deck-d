@@ -39,6 +39,8 @@ def ddb_table(aws_credentials):
                 {"AttributeName": "sk", "AttributeType": "S"},
                 {"AttributeName": "gsi1pk", "AttributeType": "S"},
                 {"AttributeName": "gsi1sk", "AttributeType": "S"},
+                {"AttributeName": "gsi2pk", "AttributeType": "S"},
+                {"AttributeName": "gsi2sk", "AttributeType": "S"},
             ],
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
@@ -52,7 +54,15 @@ def ddb_table(aws_credentials):
                         {"AttributeName": "gsi1sk", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
-                }
+                },
+                {
+                    "IndexName": "gsi2",
+                    "KeySchema": [
+                        {"AttributeName": "gsi2pk", "KeyType": "HASH"},
+                        {"AttributeName": "gsi2sk", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
             ],
         )
         # Reset the module-level _table cache so each test gets a fresh resource
