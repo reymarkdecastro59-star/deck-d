@@ -5,6 +5,7 @@ from aws_lambda_powertools import Logger
 from shared.auth import get_user_id
 from shared.cors import CORS_HEADERS
 from shared.db import get_sessions, get_sessions_in_range
+from shared.decay import HALF_LIFE_DAYS, weight
 
 logger = Logger(service="deckd-dashboard")
 
@@ -51,25 +52,48 @@ def handler(event: dict, context) -> dict:
             sessions = get_sessions_in_range(user_id, from_ts, to_ts, limit=500)
             range_meta = {"from": from_ts, "to": to_ts}
 
-        by_game: dict[str, int] = defaultdict(int)
+        now = int(time.time())
+        by_game_total: dict[str, int] = defaultdict(int)
+        by_game_decay: dict[str, float] = defaultdict(float)
         total_sec = 0
+        total_decay_sec = 0.0
         for s in sessions:
-            by_game[s.game_name] += s.duration_sec
+            w = weight(now - s.started_at)
+            by_game_total[s.game_name] += s.duration_sec
+            by_game_decay[s.game_name] += s.duration_sec * w
             total_sec += s.duration_sec
+            total_decay_sec += s.duration_sec * w
 
         games = sorted(
-            [{"game": g, "total_sec": t, "total_hours": round(t / 3600, 2)} for g, t in by_game.items()],
-            key=lambda x: x["total_sec"],
+            [
+                {
+                    "game": g,
+                    "total_sec": t,
+                    "total_hours": round(t / 3600, 2),
+                    "decay_sec": round(by_game_decay[g], 2),
+                    "decay_hours": round(by_game_decay[g] / 3600, 2),
+                }
+                for g, t in by_game_total.items()
+            ],
+            key=lambda x: x["decay_sec"],
             reverse=True,
         )
 
         total_sessions = len(sessions)
         total_hours = round(total_sec / 3600, 2)
-        logger.info("dashboard_fetched", total_sessions=total_sessions, total_hours=total_hours)
+        decay_hours = round(total_decay_sec / 3600, 2)
+        logger.info(
+            "dashboard_fetched",
+            total_sessions=total_sessions,
+            total_hours=total_hours,
+            decay_hours=decay_hours,
+        )
 
         body: dict = {
             "total_sessions": total_sessions,
             "total_hours": total_hours,
+            "decay_hours": decay_hours,
+            "half_life_days": HALF_LIFE_DAYS,
             "games": games,
         }
         if range_meta is not None:
