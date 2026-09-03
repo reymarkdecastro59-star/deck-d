@@ -5,7 +5,7 @@ from aws_lambda_powertools import Logger
 from shared.auth import get_user_id
 from shared.cors import CORS_HEADERS
 from shared.db import get_sessions, get_sessions_in_range
-from shared.decay import HALF_LIFE_DAYS, weight
+from shared.decay import HALF_LIFE_DAYS, decay_sec_by_game
 
 logger = Logger(service="deckd-dashboard")
 
@@ -54,30 +54,36 @@ def handler(event: dict, context) -> dict:
 
         now = int(time.time())
         by_game_total: dict[str, int] = defaultdict(int)
-        by_game_decay: dict[str, float] = defaultdict(float)
         total_sec = 0
-        total_decay_sec = 0.0
+        future_dated = 0
         for s in sessions:
-            w = weight(now - s.started_at)
             by_game_total[s.game_name] += s.duration_sec
-            by_game_decay[s.game_name] += s.duration_sec * w
             total_sec += s.duration_sec
-            total_decay_sec += s.duration_sec * w
+            # Clock skew or bad ingestion payload can produce started_at > now.
+            # weight() clamps to 1.0, which violates decay_sec <= total_sec silently
+            # in the response — surface it as a warning so ops sees it.
+            if now - s.started_at < -60:
+                future_dated += 1
 
-        games = sorted(
-            [
-                {
-                    "game": g,
-                    "total_sec": t,
-                    "total_hours": round(t / 3600, 2),
-                    "decay_sec": round(by_game_decay[g], 2),
-                    "decay_hours": round(by_game_decay[g] / 3600, 2),
-                }
-                for g, t in by_game_total.items()
-            ],
-            key=lambda x: x["decay_sec"],
-            reverse=True,
-        )
+        by_game_decay = decay_sec_by_game(sessions, now)
+        total_decay_sec = sum(by_game_decay.values())
+
+        if future_dated:
+            logger.warning("future_dated_sessions", count=future_dated)
+
+        # Sort on the raw float, not the rounded field — rounding then sorting
+        # produces arbitrary tie-breaks by dict insertion order.
+        sorted_games = sorted(by_game_total.keys(), key=lambda g: by_game_decay[g], reverse=True)
+        games = [
+            {
+                "game": g,
+                "total_sec": by_game_total[g],
+                "total_hours": round(by_game_total[g] / 3600, 2),
+                "decay_sec": round(by_game_decay[g], 2),
+                "decay_hours": round(by_game_decay[g] / 3600, 2),
+            }
+            for g in sorted_games
+        ]
 
         total_sessions = len(sessions)
         total_hours = round(total_sec / 3600, 2)

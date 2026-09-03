@@ -18,7 +18,7 @@ def weight(age_sec: int) -> float:
 
 
 def decay_sec(sessions: list[Session], now: int) -> float:
-    return sum(s.duration_sec * weight(now - s.started_at) for s in sessions)
+    return sum((s.duration_sec * weight(now - s.started_at) for s in sessions), start=0.0)
 
 
 def decay_sec_by_game(sessions: list[Session], now: int) -> dict[str, float]:
