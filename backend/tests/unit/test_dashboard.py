@@ -38,7 +38,12 @@ def test_dashboard_aggregation(ddb_table):
     body = json.loads(resp["body"])
 
     assert body["total_sessions"] == 3
+    # Precondition: the seed above is disjoint (3d/2d/1d apart, all under 2h),
+    # so union total == raw sum. Overlap-specific behaviour lives in the
+    # Phase 4 test block below.
     assert body["total_hours"] == round((3600 + 1800 + 7200) / 3600, 2)
+    assert body["raw_sum_hours"] == body["total_hours"]
+    assert body["overlap_stripped_hours"] == 0.0
     assert body["half_life_days"] == 14
     assert body["decay_hours"] <= body["total_hours"]  # decay never exceeds raw
     assert body["decay_hours"] > 0  # sessions are recent enough to matter
@@ -197,3 +202,130 @@ def test_dashboard_invalid_params_not_int(ddb_table):
     body = json.loads(resp["body"])
     assert body["error"] == "invalid_range"
     assert "details" in body
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — overlap-aware aggregation (the Phasmo question)
+# ---------------------------------------------------------------------------
+
+def test_dashboard_phasmo_two_pcs_same_time_counts_once(ddb_table):
+    """The plan's headline case: 5h on PC1 + 5h on PC2 at the same time
+    should be 5h, not 10h. Also asserts overlap_stripped surfacing so the
+    UI can show 'we saved you 5h of double counting'."""
+    now = int(time.time())
+    five_h = 5 * 3600
+    start = now - 6 * 3600
+    _seed("Phasmophobia", five_h, "pc1", start)
+    _seed("Phasmophobia", five_h, "pc2", start)  # exact same window
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    # Top-level: total is the union across everything = 5h
+    assert body["total_hours"] == 5.0
+    assert body["raw_sum_hours"] == 10.0
+    assert body["overlap_stripped_hours"] == 5.0
+    # Per-game: same
+    phasmo = body["games"][0]
+    assert phasmo["total_sec"] == five_h
+    assert phasmo["raw_sum_sec"] == 2 * five_h
+    assert phasmo["overlap_stripped_sec"] == five_h
+    # Invariant: decay is bounded by union total, never by raw sum
+    assert body["decay_hours"] <= body["total_hours"]
+    assert phasmo["decay_sec"] <= phasmo["total_sec"]
+
+
+def test_dashboard_disjoint_sessions_sum_normally(ddb_table):
+    """No overlap → union total equals raw sum. overlap_stripped is 0."""
+    now = int(time.time())
+    _seed("Phasmophobia", 3600, "a", now - 10_000)
+    _seed("Phasmophobia", 3600, "b", now - 5_000)  # no overlap with a
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    assert body["total_hours"] == 2.0
+    assert body["raw_sum_hours"] == 2.0
+    assert body["overlap_stripped_hours"] == 0.0
+    assert body["games"][0]["overlap_stripped_sec"] == 0
+    assert body["decay_hours"] <= body["total_hours"]
+
+
+def test_dashboard_partial_overlap_merges_correctly(ddb_table):
+    """Session A: 10:00-15:00 (5h), Session B: 13:00-17:00 (4h). Union = 7h."""
+    now = int(time.time())
+    a_start = now - 20_000
+    _seed("Phasmophobia", 5 * 3600, "a", a_start)
+    _seed("Phasmophobia", 4 * 3600, "b", a_start + 3 * 3600)
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    phasmo = body["games"][0]
+    assert phasmo["total_sec"] == 7 * 3600
+    assert phasmo["raw_sum_sec"] == 9 * 3600
+    assert phasmo["overlap_stripped_sec"] == 2 * 3600
+    assert phasmo["decay_sec"] <= phasmo["total_sec"]
+
+
+def test_dashboard_three_way_overlap_collapses(ddb_table):
+    """Three cascading overlaps on the same game collapse to one merged span."""
+    now = int(time.time())
+    base = now - 30_000
+    # 10-15, 12-18, 16-25 (in units of some seconds) → merged [10, 25]
+    _seed("Phasmophobia", 5 * 100, "a", base + 10 * 100)
+    _seed("Phasmophobia", 6 * 100, "b", base + 12 * 100)
+    _seed("Phasmophobia", 9 * 100, "c", base + 16 * 100)
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    phasmo = body["games"][0]
+    assert phasmo["total_sec"] == 15 * 100  # [10,25] wall span
+    assert phasmo["raw_sum_sec"] == (5 + 6 + 9) * 100  # 20 * 100
+    assert phasmo["decay_sec"] <= phasmo["total_sec"]
+
+
+def test_dashboard_cross_game_concurrency_stripped_at_top_level(ddb_table):
+    """Game A on PC1 + Game B on PC2 at the same time. Per-game each stands
+    alone. But the top-level total_hours should count the concurrent window
+    once — that's honest 'wall-clock hours actually gaming'."""
+    now = int(time.time())
+    start = now - 4 * 3600
+    _seed("GameA", 3600, "a", start)
+    _seed("GameB", 3600, "b", start)  # exact same window
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    # Two different games, each counted individually (no per-game overlap)
+    assert body["games"][0]["total_sec"] == 3600
+    assert body["games"][1]["total_sec"] == 3600
+    # But top-level wall-clock is only 1h (concurrent)
+    assert body["total_hours"] == 1.0
+    assert body["raw_sum_hours"] == 2.0
+    assert body["overlap_stripped_hours"] == 1.0
+    # Per-game invariant holds: each game's decay is bounded by its union.
+    # Top-level decay_hours CAN exceed total_hours here because decay sums
+    # per-game credit (2 games × ~1h ≈ 2h) while total_hours is the
+    # cross-game wall-clock union (1h). This is by design — decay tracks
+    # "momentum per game", total_hours tracks "wall time actually gaming".
+    for g in body["games"]:
+        assert g["decay_sec"] <= g["total_sec"]
+
+
+def test_dashboard_decay_uses_union_not_raw_sum(ddb_table):
+    """Overlapping sessions on the same game must not double-count under decay.
+    Two identical 1h sessions both played 'now' → decay should be ~1h, not ~2h."""
+    now = int(time.time())
+    _seed("Phasmophobia", 3600, "pc1", now - 3600)
+    _seed("Phasmophobia", 3600, "pc2", now - 3600)  # same window
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    phasmo = body["games"][0]
+    # Just-now → weight ≈ 1.0, so decay ≈ 3600s ≈ 1 hour, not 7200/2 hours.
+    assert phasmo["decay_sec"] < 3700  # slack for slight decay while test ran
+    assert phasmo["decay_sec"] > 3500
+    assert phasmo["decay_sec"] <= phasmo["total_sec"]

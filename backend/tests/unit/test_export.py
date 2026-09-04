@@ -33,8 +33,18 @@ def _export_event(format_param: str | None = None) -> dict:
 
 
 def _parse_csv(body: str) -> list[dict]:
-    reader = csv.DictReader(io.StringIO(body))
+    """Skip # summary comment lines at the top, then parse the CSV body."""
+    lines = [ln for ln in body.splitlines() if not ln.startswith("#")]
+    reader = csv.DictReader(io.StringIO("\n".join(lines)))
     return list(reader)
+
+
+def _csv_header_line(body: str) -> str:
+    """Return the first non-comment line — the CSV header row."""
+    for ln in body.splitlines():
+        if not ln.startswith("#"):
+            return ln
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -62,16 +72,16 @@ def test_export_csv_happy_path(ddb_table):
 
 
 def test_export_csv_has_header_row(ddb_table):
-    """The raw body must contain the CSV header line."""
+    """The CSV header line must be present after the summary comment block."""
     _seed_session("s1")
 
     event = _export_event("csv")
     resp = handler(event, FakeLambdaContext())
 
-    first_line = resp["body"].splitlines()[0]
-    assert "session_id" in first_line
-    assert "game_name" in first_line
-    assert "duration_sec" in first_line
+    header = _csv_header_line(resp["body"])
+    assert "session_id" in header
+    assert "game_name" in header
+    assert "duration_sec" in header
 
 
 # ---------------------------------------------------------------------------
@@ -118,15 +128,15 @@ def test_export_json_happy_path(ddb_table):
 # ---------------------------------------------------------------------------
 
 def test_export_empty_csv(ddb_table):
-    """No sessions → CSV with only the header row."""
+    """No sessions → CSV with summary block + header row + zero data rows."""
     event = _export_event("csv")
     resp = handler(event, FakeLambdaContext())
 
     assert resp["statusCode"] == 200
     rows = _parse_csv(resp["body"])
     assert rows == []
-    # Header must still be present
-    assert "session_id" in resp["body"].splitlines()[0]
+    # Header must still be present after the # summary block
+    assert "session_id" in _csv_header_line(resp["body"])
 
 
 def test_export_empty_json(ddb_table):
@@ -164,3 +174,50 @@ def test_export_case_insensitive_format(ddb_table):
 
     assert resp["statusCode"] == 200
     assert "text/csv" in resp["headers"]["Content-Type"]
+
+
+# ---------------------------------------------------------------------------
+# Overlap-aware summary block (Phase 4)
+# ---------------------------------------------------------------------------
+
+def _seed_overlapping_pair(session_id_a: str, session_id_b: str, start: int, length: int):
+    """Two full-overlap sessions on the same game — classic Phasmo case."""
+    for sid in (session_id_a, session_id_b):
+        db_module.put_session(Session(
+            user_id=USER_ID,
+            session_id=sid,
+            game_exe="phasmo.exe", game_name="Phasmophobia",
+            started_at=start, ended_at=start + length,
+            duration_sec=length, label="tracked",
+        ))
+
+
+def test_export_json_summary_strips_overlap(ddb_table):
+    """5h on PC1 + 5h on PC2 fully overlapping → raw_sum=10h, union=5h."""
+    five_hours = 5 * 3600
+    _seed_overlapping_pair("pc1", "pc2", 1_700_000_000, five_hours)
+
+    resp = handler(_export_event("json"), FakeLambdaContext())
+    payload = json.loads(resp["body"])
+    assert payload["summary"]["session_count"] == 2
+    assert payload["summary"]["raw_sum_sec"] == 2 * five_hours
+    assert payload["summary"]["union_sec"] == five_hours
+    assert payload["summary"]["overlap_stripped_sec"] == five_hours
+
+
+def test_export_csv_summary_lines_visible_at_top(ddb_table):
+    """CSV summary is emitted as # comment lines above the header."""
+    five_hours = 5 * 3600
+    _seed_overlapping_pair("pc1", "pc2", 1_700_000_000, five_hours)
+
+    resp = handler(_export_event("csv"), FakeLambdaContext())
+    lines = resp["body"].splitlines()
+    comment_lines = [ln for ln in lines if ln.startswith("#")]
+    assert len(comment_lines) >= 1
+    joined = "\n".join(comment_lines)
+    assert f"raw_sum_sec={2 * five_hours}" in joined
+    assert f"union_sec={five_hours}" in joined
+    assert f"overlap_stripped_sec={five_hours}" in joined
+    # Raw rows are still present, both of them
+    rows = _parse_csv(resp["body"])
+    assert len(rows) == 2

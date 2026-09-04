@@ -4,7 +4,14 @@ Recency-weighted playtime scoring via exponential decay.
 A session's contribution to a user's "current momentum" score is its
 duration multiplied by 2**(-age / HALF_LIFE_SEC). One half-life ago →
 half credit; two half-lives ago → quarter credit; and so on.
+
+Since Phase 4 the decay is computed against the union of a game's
+intervals — otherwise two overlapping sessions on different devices
+would double-count their credit and inflate the momentum score.
 """
+from collections import defaultdict
+
+from .intervals import merge_intervals
 from .models import Session
 
 HALF_LIFE_DAYS = 14
@@ -18,11 +25,33 @@ def weight(age_sec: int) -> float:
 
 
 def decay_sec(sessions: list[Session], now: int) -> float:
-    return sum((s.duration_sec * weight(now - s.started_at) for s in sessions), start=0.0)
+    """Total decay-weighted seconds across all sessions.
+
+    Kept for callers that don't care about per-game grouping — sums the
+    per-game union results so double-counting is stripped."""
+    return sum(decay_sec_by_game(sessions, now).values(), start=0.0)
 
 
 def decay_sec_by_game(sessions: list[Session], now: int) -> dict[str, float]:
-    totals: dict[str, float] = {}
+    """Decay-weighted seconds per game, computed on the union of intervals.
+
+    Each merged interval contributes (length_sec * weight(now - interval_start))
+    so overlapping sessions on the same game aren't double-counted.
+
+    Simplification: weight is evaluated at the interval's start, not integrated
+    across it. For a 14-day half-life this over-credits the tail seconds of a
+    long merged window by <1% for typical (2–5h) windows — acceptable for a
+    habit tracker. If tighter accuracy is ever needed, the closed form is
+        (HALF_LIFE_SEC / ln 2) * (weight(now - start) - weight(now - end))
+    """
+    intervals_by_game: dict[str, list[tuple[int, int]]] = defaultdict(list)
     for s in sessions:
-        totals[s.game_name] = totals.get(s.game_name, 0.0) + s.duration_sec * weight(now - s.started_at)
+        intervals_by_game[s.game_name].append((s.started_at, s.ended_at))
+
+    totals: dict[str, float] = {}
+    for game, ivs in intervals_by_game.items():
+        merged = merge_intervals(ivs)
+        totals[game] = sum(
+            (end - start) * weight(now - start) for start, end in merged
+        )
     return totals
