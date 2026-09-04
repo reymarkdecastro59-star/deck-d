@@ -14,10 +14,14 @@ def sync_sessions() -> tuple[int, int]:
     Account B's token (conflict A6).
 
     Every request carries X-Device-Id + X-Device-Name so the backend can
-    auto-register the install and attribute rows. A 403 response means the
-    device was revoked from the web UI; rows stay queued so a future
-    un-revoke picks them up (retry-forever is intentional here — a proper
-    dead-letter policy is Phase 5 scope).
+    auto-register the install and attribute rows.
+
+    Terminal-for-this-tick responses (401 token rejected, 403 device revoked,
+    429 device cap / throttled) log once per account per drain and skip the
+    remaining rows for that account — otherwise a revoked device with N
+    queued rows would print N identical lines every tick, forever. Rows
+    stay queued so an un-revoke or re-login picks them up on a later tick
+    (proper dead-letter policy is Phase 5 scope).
 
     Returns (ok_count, failed_count) totalled across accounts.
     """
@@ -44,7 +48,8 @@ def sync_sessions() -> tuple[int, int]:
             "X-Device-Id": device_id,
             "X-Device-Name": device_name,
         }
-        for s in get_unsynced(user_id):
+        rows = get_unsynced(user_id)
+        for idx, s in enumerate(rows):
             payload = {
                 "session_id": s["session_id"],
                 "game_exe": s["game_exe"],
@@ -61,27 +66,37 @@ def sync_sessions() -> tuple[int, int]:
                 if resp.status_code in (200, 201):
                     mark_synced(s["session_id"])
                     ok_total += 1
-                elif resp.status_code == 403:
-                    # Device revoked from the web UI. Surface it so the user
-                    # can see why sync is dead; leave the row queued in case
-                    # the revocation is undone later.
-                    print(
-                        f"[deckd] Sync refused (403) for user {user_id} — "
-                        f"this device ({device_id[:8]}...) has been revoked. "
-                        "Un-revoke from the web dashboard to resume.",
-                        file=sys.stderr,
-                    )
-                    failed_total += 1
-                elif resp.status_code == 429:
-                    print(
-                        f"[deckd] Sync throttled (429) for user {user_id} — "
-                        "device limit exceeded or rate-limited.",
-                        file=sys.stderr,
-                    )
-                    failed_total += 1
+                elif resp.status_code in (401, 403, 429):
+                    _log_terminal(resp.status_code, user_id, device_id)
+                    # This row + every remaining unattempted row for this account.
+                    failed_total += len(rows) - idx
+                    break
                 else:
                     failed_total += 1
             except requests.RequestException:
                 failed_total += 1
 
     return ok_total, failed_total
+
+
+def _log_terminal(status_code: int, user_id: str, device_id: str) -> None:
+    """Single log line per (account, tick) for a terminal auth/device response."""
+    short_user = user_id[:8]
+    short_dev = device_id[:8]
+    if status_code == 401:
+        msg = (
+            f"[deckd] Sync refused (401) for user {short_user}... — "
+            "token rejected. Re-login to resume."
+        )
+    elif status_code == 403:
+        msg = (
+            f"[deckd] Sync refused (403) for user {short_user}... — "
+            f"device {short_dev}... has been revoked. "
+            "Un-revoke from the web dashboard to resume."
+        )
+    else:  # 429
+        msg = (
+            f"[deckd] Sync throttled (429) for user {short_user}... — "
+            "device limit exceeded or rate-limited."
+        )
+    print(msg, file=sys.stderr)
