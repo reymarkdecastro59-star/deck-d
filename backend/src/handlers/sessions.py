@@ -41,7 +41,7 @@ def _post_session(event: dict) -> dict:
     try:
         data = SessionCreate.model_validate(json.loads(event.get("body") or "{}"))
     except ValidationError as e:
-        return _resp(400, {"error": "validation_failed", "details": e.errors()})
+        return _resp(400, {"error": "validation_failed", "details": e.errors(include_context=False, include_input=False, include_url=False)})
 
     session = Session(
         user_id=user_id,
@@ -73,7 +73,7 @@ def _post_batch(event: dict) -> dict:
     try:
         data = SessionBatchCreate.model_validate(raw)
     except ValidationError as e:
-        return _resp(400, {"error": "validation_failed", "details": e.errors()})
+        return _resp(400, {"error": "validation_failed", "details": e.errors(include_context=False, include_input=False, include_url=False)})
 
     sessions = [
         Session(
@@ -117,7 +117,7 @@ def _patch_session(event: dict, session_id: str) -> dict:
     try:
         data = SessionPatch.model_validate(json.loads(event.get("body") or "{}"))
     except ValidationError as e:
-        return _resp(400, {"error": "validation_failed", "details": e.errors()})
+        return _resp(400, {"error": "validation_failed", "details": e.errors(include_context=False, include_input=False, include_url=False)})
 
     session = update_session_label(user_id, session_id, data.label)
     if session is None:
