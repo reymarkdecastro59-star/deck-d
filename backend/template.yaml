@@ -109,7 +109,7 @@ Resources:
       StageName: !Ref Stage
       Cors:
         AllowMethods: "'GET,POST,DELETE,PATCH,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
+        AllowHeaders: "'Content-Type,Authorization,X-Device-Id,X-Device-Name'"
         AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
@@ -194,6 +194,35 @@ Resources:
             RestApiId: !Ref Api
             Path: /export
             Method: GET
+
+  DevicesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-devices-${Stage}
+      CodeUri: src/
+      Handler: handlers.devices.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetDevices:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /devices
+            Method: GET
+        PatchDevice:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /devices/{device_id}
+            Method: PATCH
+        DeleteDevice:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /devices/{device_id}
+            Method: DELETE
 
   ProfileFunction:
     Type: AWS::Serverless::Function

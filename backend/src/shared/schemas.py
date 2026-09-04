@@ -37,3 +37,7 @@ class ProfilePatch(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     email: EmailStr | None = None
+
+
+class DevicePatch(BaseModel):
+    device_name: str = Field(min_length=1, max_length=64)

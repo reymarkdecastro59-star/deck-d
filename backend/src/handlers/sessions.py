@@ -1,9 +1,13 @@
-﻿import json
+import json
+from typing import Optional, Tuple
 from aws_lambda_powertools import Logger
 from pydantic import ValidationError
 from shared.auth import get_user_id, get_user_email
 from shared.cors import CORS_HEADERS
-from shared.db import put_session, put_sessions_batch, get_sessions, get_or_create_profile, delete_session, update_session_label
+from shared.db import (
+    put_session, put_sessions_batch, get_sessions, get_or_create_profile,
+    delete_session, update_session_label, touch_device, DeviceLimitExceededError,
+)
 from shared.models import Session
 from shared.schemas import SessionCreate, SessionBatchCreate, SessionPatch
 
@@ -34,9 +38,48 @@ def handler(event: dict, context) -> dict:
         return _resp(500, {"error": "Internal server error"})
 
 
+def _get_header(event: dict, name: str) -> Optional[str]:
+    """Case-insensitive header lookup — API Gateway may lowercase names."""
+    headers = event.get("headers") or {}
+    target = name.lower()
+    for k, v in headers.items():
+        if k.lower() == target:
+            return v
+    return None
+
+
+def _resolve_device(event: dict, user_id: str) -> Tuple[Optional[str], Optional[dict]]:
+    """
+    Auto-register / touch the device from X-Device-Id + X-Device-Name headers.
+    Returns (device_id, None) on success or (None, error_response) if the
+    device is revoked. If no header is sent, returns (None, None) and the
+    session is stored without device attribution (backward compatible with
+    pre-Phase-2 agents).
+    """
+    device_id = _get_header(event, "X-Device-Id")
+    if not device_id:
+        return None, None
+    device_name = _get_header(event, "X-Device-Name") or "unnamed-device"
+    try:
+        device = touch_device(user_id, device_id, device_name)
+    except DeviceLimitExceededError:
+        logger.warning("device_limit_exceeded", user_id=user_id)
+        return None, _resp(429, {"error": "device_limit_exceeded"})
+    if device.is_revoked:
+        # Don't echo the client-supplied device_id back — it turns the response
+        # into an existence oracle for revoked IDs and a reflected-value risk.
+        logger.warning("session_from_revoked_device", user_id=user_id)
+        return None, _resp(403, {"error": "device_revoked"})
+    return device_id, None
+
+
 def _post_session(event: dict) -> dict:
     user_id = get_user_id(event)
     get_or_create_profile(user_id, get_user_email(event))
+
+    device_id, err = _resolve_device(event, user_id)
+    if err is not None:
+        return err
 
     try:
         data = SessionCreate.model_validate(json.loads(event.get("body") or "{}"))
@@ -52,15 +95,21 @@ def _post_session(event: dict) -> dict:
         ended_at=data.ended_at,
         duration_sec=data.duration_sec,
         label=data.label,
+        device_id=device_id,
     )
     put_session(session)
-    logger.info("session_created", session_id=session.session_id, game_name=session.game_name, duration_sec=session.duration_sec)
+    logger.info("session_created", session_id=session.session_id, game_name=session.game_name,
+                duration_sec=session.duration_sec, device_id=device_id)
     return _resp(201, {"session_id": session.session_id})
 
 
 def _post_batch(event: dict) -> dict:
     user_id = get_user_id(event)
     get_or_create_profile(user_id, get_user_email(event))
+
+    device_id, err = _resolve_device(event, user_id)
+    if err is not None:
+        return err
 
     try:
         raw = json.loads(event.get("body") or "null")
@@ -85,11 +134,12 @@ def _post_batch(event: dict) -> dict:
             ended_at=item.ended_at,
             duration_sec=item.duration_sec,
             label=item.label,
+            device_id=device_id,
         )
         for item in data.sessions
     ]
     put_sessions_batch(sessions)
-    logger.info("sessions_batch_created", user_id=user_id, count=len(sessions))
+    logger.info("sessions_batch_created", user_id=user_id, count=len(sessions), device_id=device_id)
     return _resp(201, {"count": len(sessions), "session_ids": [s.session_id for s in sessions]})
 
 
