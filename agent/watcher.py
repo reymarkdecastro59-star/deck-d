@@ -1,9 +1,11 @@
-﻿import psutil
+import sys
+import psutil
 import time
 import threading
 from config import POLL_INTERVAL_SEC
 from session import open_session, close_session
 from games import get_tracked
+from auth import get_active_user_id
 
 _active: dict[str, str] = {}  # exe -> session_id
 _lock = threading.Lock()
@@ -20,7 +22,14 @@ def _poll():
             # Detect new game starts
             for exe, name in tracked.items():
                 if exe in running_exes and exe not in _active:
-                    sid = open_session(exe, name)
+                    user_id = get_active_user_id()
+                    if user_id is None:
+                        # No active account — cannot attribute this session to anyone.
+                        # Skip rather than store an orphan row (see A6 in conflict audit).
+                        print(f"[deckd] {exe} started but no active account — session skipped",
+                              file=sys.stderr)
+                        continue
+                    sid = open_session(user_id, exe, name)
                     _active[exe] = sid
 
             # Detect game stops
