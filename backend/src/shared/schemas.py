@@ -8,6 +8,11 @@ _CLOCK_SKEW_TOLERANCE_SEC = 60
 # integer rounding at session close on the agent. Anything beyond this window
 # means the caller is fabricating playtime.
 _DURATION_TOLERANCE_SEC = 5
+# Cap the wall-clock length of a single session at 12 hours. A single legit
+# gaming session doesn't exceed this, and without a cap a caller can pass
+# started_at=0 (Unix epoch) and end up with a "55-year session" that nukes
+# every aggregation. Closes issue #18.
+_MAX_SESSION_LENGTH_SEC = 12 * 60 * 60
 
 
 class SessionCreate(BaseModel):
@@ -26,10 +31,18 @@ class SessionCreate(BaseModel):
         skew_limit = int(time.time()) + _CLOCK_SKEW_TOLERANCE_SEC
         if self.ended_at > skew_limit:
             raise ValueError(f"ended_at is in the future (max {skew_limit})")
+        wall = self.ended_at - self.started_at
+        # Cap wall-clock length before the duration cross-check. Without this,
+        # started_at=0 + ended_at=now passes every other check and stores a
+        # 55-year "session".
+        if wall > _MAX_SESSION_LENGTH_SEC:
+            raise ValueError(
+                f"session length ({wall}s) exceeds the maximum "
+                f"({_MAX_SESSION_LENGTH_SEC}s / 12 hours)"
+            )
         # Cross-check duration_sec against the wall-clock window. Without this,
         # a caller can send started_at=T, ended_at=T+60, duration_sec=999999
         # and inflate their decay-weighted dashboard total.
-        wall = self.ended_at - self.started_at
         if abs(self.duration_sec - wall) > _DURATION_TOLERANCE_SEC:
             raise ValueError(
                 f"duration_sec ({self.duration_sec}) must match "

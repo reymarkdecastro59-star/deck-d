@@ -338,6 +338,65 @@ def test_post_session_duration_off_by_six_seconds_rejected(ddb_table):
     assert json.loads(resp["body"])["error"] == "validation_failed"
 
 
+def test_post_session_over_12h_rejected(ddb_table):
+    """A 13-hour session exceeds the 12-hour cap — 400."""
+    thirteen_hours = 13 * 60 * 60
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_000_000,
+            "ended_at": 1_700_000_000 + thirteen_hours,
+            "duration_sec": thirteen_hours,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    body = json.loads(resp["body"])
+    assert body["error"] == "validation_failed"
+
+
+def test_post_session_epoch_started_at_rejected(ddb_table):
+    """The classic exploit: started_at=0 (Unix epoch), ended_at=now.
+    Without a max-length cap this passes every existing check and stores a
+    55-year "session" that annihilates every aggregation."""
+    now = int(time.time())
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "epoch-attack",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 0,
+            "ended_at": now,
+            "duration_sec": now,  # matches wall, so passes cross-check
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_post_session_11h_59m_accepted(ddb_table):
+    """Just under the 12-hour cap must succeed."""
+    eleven_h_59m = 11 * 60 * 60 + 59 * 60  # 43140s
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "marathon",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_000_000,
+            "ended_at": 1_700_000_000 + eleven_h_59m,
+            "duration_sec": eleven_h_59m,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+
+
 # ---------------------------------------------------------------------------
 # Device attribution via X-Device-Id / X-Device-Name headers (Phase 2)
 # ---------------------------------------------------------------------------
