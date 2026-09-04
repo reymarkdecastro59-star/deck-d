@@ -18,6 +18,11 @@ def merge_intervals(intervals: list[Interval]) -> list[Interval]:
     """
     Standard sweep-line merge. O(n log n) via the sort, O(n) merge pass.
 
+    Intervals are treated as half-open [start, end) on epoch seconds. Adjacent
+    intervals where `s == last_e` (session A ends the same second session B
+    starts) are joined into one span; the total duration is unchanged either
+    way, but the merged form is tidier for downstream weighted-sum passes.
+
     Empty and negative-length intervals (start >= end) are silently dropped —
     the ingest validator already rejects them, but be defensive here so an
     aggregation call on legacy data never crashes.

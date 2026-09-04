@@ -36,7 +36,14 @@ def decay_sec_by_game(sessions: list[Session], now: int) -> dict[str, float]:
     """Decay-weighted seconds per game, computed on the union of intervals.
 
     Each merged interval contributes (length_sec * weight(now - interval_start))
-    so overlapping sessions on the same game aren't double-counted."""
+    so overlapping sessions on the same game aren't double-counted.
+
+    Simplification: weight is evaluated at the interval's start, not integrated
+    across it. For a 14-day half-life this over-credits the tail seconds of a
+    long merged window by <1% for typical (2–5h) windows — acceptable for a
+    habit tracker. If tighter accuracy is ever needed, the closed form is
+        (HALF_LIFE_SEC / ln 2) * (weight(now - start) - weight(now - end))
+    """
     intervals_by_game: dict[str, list[tuple[int, int]]] = defaultdict(list)
     for s in sessions:
         intervals_by_game[s.game_name].append((s.started_at, s.ended_at))

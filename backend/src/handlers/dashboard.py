@@ -83,6 +83,12 @@ def handler(event: dict, context) -> dict:
         # Top-level union covers cross-game concurrency too (e.g. Game A on
         # PC1 while Game B runs on PC2). Answers "wall-clock hours actually
         # gaming" — the honest number.
+        #
+        # NOTE: decay_hours (sum of per-game decay credit) can exceed
+        # total_hours (cross-game union) when two different games ran
+        # concurrently. Per-game the invariant decay_sec <= total_sec always
+        # holds, but at the top level decay measures "momentum per game" and
+        # total_hours measures "wall time gaming" — different dimensions.
         total_union_sec = union_seconds(all_intervals)
 
         if future_dated:
