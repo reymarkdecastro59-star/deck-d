@@ -249,6 +249,95 @@ def test_post_session_slight_future_within_tolerance_accepted(ddb_table):
     assert resp["statusCode"] == 201
 
 
+def test_post_session_inflated_duration_rejected(ddb_table):
+    """duration_sec must match ended_at - started_at within 5s.
+    Without this, a caller can send a 60-second window with a 999999s duration
+    and inflate the decay-weighted dashboard score."""
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_000_000,
+            "ended_at": 1_700_000_060,  # 60s window
+            "duration_sec": 999_999,     # fabricated
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    body = json.loads(resp["body"])
+    assert body["error"] == "validation_failed"
+    assert isinstance(body["details"], list)
+
+
+def test_post_batch_rejects_child_with_inflated_duration(ddb_table):
+    """SessionBatchCreate embeds list[SessionCreate], so the duration cross-check
+    must propagate through the batch code path. If a batch of 3 has one bad
+    child, the whole batch is rejected."""
+    good_a = {
+        "session_id": "ok-1",
+        "game_exe": "game.exe", "game_name": "My Game",
+        "started_at": 1_700_000_000, "ended_at": 1_700_003_600, "duration_sec": 3600,
+    }
+    bad = {
+        "session_id": "bad",
+        "game_exe": "game.exe", "game_name": "My Game",
+        "started_at": 1_700_010_000, "ended_at": 1_700_010_060,
+        "duration_sec": 999_999,  # 60s window, fake duration
+    }
+    good_b = {
+        "session_id": "ok-2",
+        "game_exe": "game.exe", "game_name": "My Game",
+        "started_at": 1_700_020_000, "ended_at": 1_700_023_600, "duration_sec": 3600,
+    }
+    event = make_event(
+        method="POST",
+        resource="/sessions/batch",
+        body={"sessions": [good_a, bad, good_b]},
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+    # And nothing landed in the store
+    assert db_module.get_sessions(USER_ID, limit=10) == []
+
+
+def test_post_session_duration_off_by_a_few_seconds_accepted(ddb_table):
+    """A ±5s tolerance covers integer-rounding at session close on the agent."""
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_000_000,
+            "ended_at": 1_700_003_600,   # wall = 3600
+            "duration_sec": 3597,         # off by 3s — allowed
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+
+
+def test_post_session_duration_off_by_six_seconds_rejected(ddb_table):
+    """One second past the ±5s tolerance boundary must be rejected."""
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_000_000,
+            "ended_at": 1_700_003_600,
+            "duration_sec": 3606,  # 6s over — rejected
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
 # ---------------------------------------------------------------------------
 # Device attribution via X-Device-Id / X-Device-Name headers (Phase 2)
 # ---------------------------------------------------------------------------
