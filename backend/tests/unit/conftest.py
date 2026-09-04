@@ -81,6 +81,7 @@ def make_event(
     email: str = USER_EMAIL,
     resource: str | None = None,
     raw_body: str | None = None,
+    headers: dict | None = None,
 ) -> dict:
     import json
     if raw_body is not None:
@@ -93,6 +94,7 @@ def make_event(
         "pathParameters": path_params,
         "queryStringParameters": query_params,
         "body": serialized_body,
+        "headers": headers or {},
         "requestContext": {
             "authorizer": {
                 "claims": {

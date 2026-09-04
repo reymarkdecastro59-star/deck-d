@@ -1,8 +1,9 @@
 ﻿import os
+import time
 from typing import Optional
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
-from .models import Session, UserProfile
+from .models import Session, UserProfile, Device
 
 # ---------------------------------------------------------------------------
 # Game metadata helpers
@@ -159,6 +160,70 @@ def update_session_label(user_id: str, session_id: str, label: str) -> Optional[
         ReturnValues="ALL_NEW",
     )
     return Session.from_item(resp["Attributes"])
+
+
+# ---------------------------------------------------------------------------
+# Device registry (per-user)
+# ---------------------------------------------------------------------------
+
+
+def get_device(user_id: str, device_id: str) -> Optional[Device]:
+    resp = get_table().get_item(Key={"pk": f"USER#{user_id}", "sk": f"DEVICE#{device_id}"})
+    item = resp.get("Item")
+    return Device.from_item(item) if item else None
+
+
+def list_devices(user_id: str) -> list[Device]:
+    resp = get_table().query(
+        KeyConditionExpression=Key("pk").eq(f"USER#{user_id}") & Key("sk").begins_with("DEVICE#"),
+    )
+    return [Device.from_item(item) for item in resp.get("Items", [])]
+
+
+def touch_device(user_id: str, device_id: str, device_name: str) -> Device:
+    """
+    Upsert the device row and return it. Sets first_seen on creation, always
+    bumps last_seen. Never resurrects a revoked device — caller must check
+    `.is_revoked` on the return value and refuse the request if true.
+    """
+    now = int(time.time())
+    existing = get_device(user_id, device_id)
+    if existing is None:
+        device = Device(
+            user_id=user_id, device_id=device_id, device_name=device_name,
+            first_seen=now, last_seen=now,
+        )
+        get_table().put_item(Item=device.to_item())
+        return device
+    # Preserve revoked_at + first_seen + name if caller passed empty name
+    existing.last_seen = now
+    if device_name and device_name != existing.device_name:
+        existing.device_name = device_name
+    get_table().put_item(Item=existing.to_item())
+    return existing
+
+
+def rename_device(user_id: str, device_id: str, device_name: str) -> Optional[Device]:
+    existing = get_device(user_id, device_id)
+    if existing is None:
+        return None
+    existing.device_name = device_name
+    get_table().put_item(Item=existing.to_item())
+    return existing
+
+
+def revoke_device(user_id: str, device_id: str) -> Optional[Device]:
+    existing = get_device(user_id, device_id)
+    if existing is None:
+        return None
+    existing.revoked_at = int(time.time())
+    get_table().put_item(Item=existing.to_item())
+    return existing
+
+
+# ---------------------------------------------------------------------------
+# Profile
+# ---------------------------------------------------------------------------
 
 
 def get_or_create_profile(user_id: str, email: str) -> UserProfile:

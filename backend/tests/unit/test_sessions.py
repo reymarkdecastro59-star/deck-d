@@ -250,6 +250,112 @@ def test_post_session_slight_future_within_tolerance_accepted(ddb_table):
 
 
 # ---------------------------------------------------------------------------
+# Device attribution via X-Device-Id / X-Device-Name headers (Phase 2)
+# ---------------------------------------------------------------------------
+
+import shared.db as _db_for_device_tests  # noqa: E402
+
+
+def _session_body(session_id="s1", started_at=1_700_000_000) -> dict:
+    return {
+        "session_id": session_id,
+        "game_exe": "game.exe",
+        "game_name": "My Game",
+        "started_at": started_at,
+        "ended_at": started_at + 3600,
+        "duration_sec": 3600,
+    }
+
+
+def test_post_session_without_device_header_stores_null_device_id(ddb_table):
+    """Backward compat: pre-Phase-2 agents that don't send X-Device-Id still work."""
+    event = make_event(method="POST", body=_session_body())
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert stored[0].device_id is None
+
+
+def test_post_session_with_device_header_auto_registers_and_stamps(ddb_table):
+    event = make_event(
+        method="POST",
+        body=_session_body(),
+        headers={"X-Device-Id": "dev-abc", "X-Device-Name": "Living Room PC"},
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+    # Session was stamped
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert stored[0].device_id == "dev-abc"
+    # Device row was auto-created
+    device = _db_for_device_tests.get_device(USER_ID, "dev-abc")
+    assert device is not None
+    assert device.device_name == "Living Room PC"
+
+
+def test_post_session_from_revoked_device_returns_403(ddb_table):
+    _db_for_device_tests.touch_device(USER_ID, "dev-abc", "Living Room")
+    _db_for_device_tests.revoke_device(USER_ID, "dev-abc")
+
+    event = make_event(
+        method="POST",
+        body=_session_body(),
+        headers={"X-Device-Id": "dev-abc", "X-Device-Name": "Living Room"},
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 403
+    body = json.loads(resp["body"])
+    assert body["error"] == "device_revoked"
+    assert body["device_id"] == "dev-abc"
+    # No session written
+    assert db_module.get_sessions(USER_ID, limit=10) == []
+
+
+def test_post_session_header_lookup_is_case_insensitive(ddb_table):
+    """API Gateway may lowercase header names — the handler must tolerate that."""
+    event = make_event(
+        method="POST",
+        body=_session_body(),
+        headers={"x-device-id": "dev-abc", "x-device-name": "PC"},
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert stored[0].device_id == "dev-abc"
+
+
+def test_post_batch_stamps_device_on_every_session(ddb_table):
+    payload = {"sessions": [_session_body("s1"), _session_body("s2", 1_700_010_000)]}
+    event = make_event(
+        method="POST",
+        resource="/sessions/batch",
+        body=payload,
+        headers={"X-Device-Id": "dev-abc", "X-Device-Name": "PC"},
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert len(stored) == 2
+    assert all(s.device_id == "dev-abc" for s in stored)
+
+
+def test_post_batch_from_revoked_device_returns_403(ddb_table):
+    _db_for_device_tests.touch_device(USER_ID, "dev-abc", "PC")
+    _db_for_device_tests.revoke_device(USER_ID, "dev-abc")
+
+    payload = {"sessions": [_session_body("s1")]}
+    event = make_event(
+        method="POST",
+        resource="/sessions/batch",
+        body=payload,
+        headers={"X-Device-Id": "dev-abc", "X-Device-Name": "PC"},
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 403
+    assert db_module.get_sessions(USER_ID, limit=10) == []
+
+
+# ---------------------------------------------------------------------------
 # POST /sessions/batch
 # ---------------------------------------------------------------------------
 
