@@ -314,6 +314,100 @@ def test_dashboard_cross_game_concurrency_stripped_at_top_level(ddb_table):
         assert g["decay_sec"] <= g["total_sec"]
 
 
+# ---------------------------------------------------------------------------
+# Phase 7 — canonical grouping via RAWG metadata
+# ---------------------------------------------------------------------------
+
+def _seed_metadata(exe: str, rawg_id: int, name: str, slug: str = "",
+                   bg: str = "", failed: bool = False):
+    """Write a RAWG metadata item directly (bypasses the RAWG API)."""
+    db_module.put_game_metadata({
+        "pk": f"GAME#{exe}",
+        "sk": "METADATA",
+        "gsi2pk": "GAME",
+        "gsi2sk": f"{1_700_000_000:020d}",
+        "game_exe": exe,
+        "rawg_id": rawg_id,
+        "name": name,
+        "slug": slug,
+        "background_image": bg,
+        "resolution_failed": failed,
+    })
+
+
+def test_dashboard_merges_two_launchers_via_rawg_id(ddb_table):
+    """The Phase 7 headline case: Steam install and Epic install of the
+    same game land in ONE dashboard row because RAWG resolved both exes
+    to the same rawg_id."""
+    now = int(time.time())
+    _seed("Phasmophobia (Steam)", 3600, "steam", now - 4 * 86400)
+    _seed("Phasmophobia", 1800, "epic", now - 2 * 86400)
+    # RAWG cache maps both exes to rawg_id=42 (canonical Phasmophobia).
+    _seed_metadata("phasmophobia (steam).exe", 42, "Phasmophobia",
+                   slug="phasmophobia", bg="https://media.rawg.io/phasmo.jpg")
+    _seed_metadata("phasmophobia.exe", 42, "Phasmophobia",
+                   slug="phasmophobia", bg="https://media.rawg.io/phasmo.jpg")
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    assert len(body["games"]) == 1
+    row = body["games"][0]
+    assert row["game"] == "Phasmophobia"       # RAWG canonical, not local
+    assert row["rawg_id"] == 42
+    assert row["slug"] == "phasmophobia"
+    assert row["background_image"] == "https://media.rawg.io/phasmo.jpg"
+    assert row["total_sec"] == 5400            # combined union
+
+
+def test_dashboard_falls_back_to_exe_when_no_metadata(ddb_table):
+    """No RAWG rows in the cache → group by exe. Same as pre-Phase-7 with
+    the exception that rawg_id/slug are null in the response."""
+    now = int(time.time())
+    _seed("MyGame", 3600, "a", now - 86400)
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    assert len(body["games"]) == 1
+    row = body["games"][0]
+    assert row["game"] == "MyGame"
+    assert row["rawg_id"] is None
+    assert row["slug"] is None
+    assert row["background_image"] is None
+
+
+def test_dashboard_does_not_merge_when_resolution_failed(ddb_table):
+    """A row RAWG couldn't resolve stays in the exe fallback — never
+    accidentally merged with an unrelated game just because both failed."""
+    now = int(time.time())
+    _seed("AlphaGame", 3600, "a", now - 86400)
+    _seed("BetaGame", 1800, "b", now - 43200)
+    _seed_metadata("alphagame.exe", None, "", failed=True)
+    _seed_metadata("betagame.exe", None, "", failed=True)
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+    assert len(body["games"]) == 2  # unresolved rows do NOT collide
+
+
+def test_dashboard_partial_metadata_hits_still_merge_matched_pair(ddb_table):
+    """One exe resolved, one unresolved — the resolved one groups by
+    rawg_id, the unresolved one falls back to exe. Two separate rows."""
+    now = int(time.time())
+    _seed("Resolved", 3600, "r", now - 86400)
+    _seed("NoMeta", 1800, "n", now - 43200)
+    _seed_metadata("resolved.exe", 99, "Resolved Game", slug="resolved-game")
+
+    resp = handler(make_event(method="GET"), FakeLambdaContext())
+    body = json.loads(resp["body"])
+
+    assert len(body["games"]) == 2
+    by_key = {g["game"]: g for g in body["games"]}
+    assert by_key["Resolved Game"]["rawg_id"] == 99
+    assert by_key["NoMeta"]["rawg_id"] is None
+
+
 def test_dashboard_decay_uses_union_not_raw_sum(ddb_table):
     """Overlapping sessions on the same game must not double-count under decay.
     Two identical 1h sessions both played 'now' → decay should be ~1h, not ~2h."""

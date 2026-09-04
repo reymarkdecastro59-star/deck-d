@@ -19,6 +19,36 @@ def get_game_metadata(exe_lower: str) -> Optional[dict]:
     return resp.get("Item")
 
 
+def batch_get_game_metadata(exe_lowers: list[str]) -> dict[str, dict]:
+    """Bulk-fetch RAWG metadata items keyed by exe_lower.
+
+    DynamoDB batch_get_item takes at most 100 keys per call; chunks are
+    issued sequentially. UnprocessedKeys (rare, throttling-induced) are
+    dropped silently — the caller falls back to the exe/name grouping
+    for any exe whose metadata didn't come back.
+    """
+    if not exe_lowers:
+        return {}
+    # Go through the resource so items come back already deserialized
+    # from AttributeValue form (str/int/bool instead of {"S": "..."}).
+    table_name = os.environ["TABLE_NAME"]
+    resource = boto3.resource("dynamodb")
+    out: dict[str, dict] = {}
+    for i in range(0, len(exe_lowers), 100):
+        chunk = exe_lowers[i:i + 100]
+        request = {
+            table_name: {
+                "Keys": [{"pk": f"GAME#{exe}", "sk": "METADATA"} for exe in chunk],
+            }
+        }
+        resp = resource.batch_get_item(RequestItems=request)
+        for item in resp.get("Responses", {}).get(table_name, []):
+            exe = item.get("game_exe")
+            if exe:
+                out[exe] = item
+    return out
+
+
 def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
     """Return all GAME# metadata items, oldest fetched_at first (via gsi2 sort)."""
     items: list[dict] = []
