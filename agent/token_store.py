@@ -193,24 +193,32 @@ def write(store: TokenStore) -> None:
 
 def _migrate_legacy() -> None:
     """
-    If a legacy plaintext tokens.json exists, delete it and require re-login.
+    If a legacy plaintext tokens.json exists, overwrite its bytes with zeros
+    (best-effort clean-up of the file's cluster range) then delete it.
 
-    We deliberately don't move plaintext tokens into the encrypted store —
-    the plaintext file is a security liability we want gone. Re-logging in
-    is a small cost for a clean cutover.
+    Wear-leveling on SSDs means an overwrite is not a hard guarantee, but on
+    spinning disks and even most SSDs it dramatically shortens the window
+    during which a recovery tool can reassemble the plaintext. We deliberately
+    do not migrate legacy contents into the encrypted store — re-login is a
+    small cost for a clean cutover.
     """
     if not os.path.exists(_LEGACY_TOKENS_PATH):
         return
     try:
+        size = os.path.getsize(_LEGACY_TOKENS_PATH)
+        with open(_LEGACY_TOKENS_PATH, "r+b") as f:
+            f.write(b"\x00" * size)
+            f.flush()
+            os.fsync(f.fileno())
         os.remove(_LEGACY_TOKENS_PATH)
         print(
-            "[deckd] Detected legacy plaintext tokens.json — deleted for security. "
+            "[deckd] Detected legacy plaintext tokens.json — wiped and deleted for security. "
             "Please re-run login.py.",
             file=sys.stderr,
         )
     except OSError as exc:
         # Non-fatal: user can manually delete. Log and continue.
-        print(f"[deckd] Warning: could not delete legacy tokens.json: {exc}", file=sys.stderr)
+        print(f"[deckd] Warning: could not securely delete legacy tokens.json: {exc}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------

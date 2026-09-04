@@ -88,6 +88,28 @@ def test_legacy_tokens_json_deleted_on_first_read(tmp_deckd):
     assert store.accounts == []  # legacy contents are NOT migrated
 
 
+def test_legacy_tokens_json_wiped_before_delete(tmp_deckd, monkeypatch):
+    """The plaintext must be overwritten with zeros before the file is unlinked."""
+    legacy = tmp_deckd / "tokens.json"
+    secret = b'{"id_token": "leaked-plaintext-abcdef"}'
+    legacy.write_bytes(secret)
+
+    captured: dict = {}
+    real_remove = os.remove
+
+    def spy_remove(path):
+        # Snapshot the file bytes right before it's deleted.
+        with open(path, "rb") as f:
+            captured["bytes_at_delete"] = f.read()
+        real_remove(path)
+
+    monkeypatch.setattr(os, "remove", spy_remove)
+    token_store.read()
+
+    assert not legacy.exists()
+    assert captured["bytes_at_delete"] == b"\x00" * len(secret)
+
+
 # ---------- device identity -------------------------------------------------
 
 def test_device_id_generated_once_and_persisted(tmp_deckd):

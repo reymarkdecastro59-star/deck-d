@@ -34,5 +34,6 @@ def tmp_deckd(monkeypatch, tmp_path):
     # session db
     import session as sess
     monkeypatch.setattr(sess, "DB_PATH", str(deckd_dir / "sessions.db"))
+    sess._reset_migration_state_for_tests()
 
     yield deckd_dir

@@ -1,14 +1,20 @@
 import sqlite3
+import threading
 import uuid
 import time
 import os
 
 DB_PATH = os.path.join(os.path.expanduser("~"), ".deckd", "sessions.db")
 
+_SCHEMA_VERSION = 1
+_migration_lock = threading.Lock()
+_migrated_for_path: str | None = None
 
-def _get_conn():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+
+def _run_migration(conn: sqlite3.Connection) -> None:
+    """Idempotent schema bring-up. Guarded by PRAGMA user_version and a
+    per-process lock so watcher + sync threads can't both ALTER concurrently.
+    Cross-process races are absorbed by the OperationalError catch on ALTER."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             session_id   TEXT PRIMARY KEY,
@@ -22,12 +28,35 @@ def _get_conn():
             user_id      TEXT
         )
     """)
-    # Migrate pre-Phase-1 installs that predate the user_id column.
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
-    if "user_id" not in cols:
-        conn.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT")
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < _SCHEMA_VERSION:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+        if "user_id" not in cols:
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT")
+            except sqlite3.OperationalError:
+                # Another process (or a prior partial migration) already added it.
+                pass
+        conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _get_conn():
+    global _migrated_for_path
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    if _migrated_for_path != DB_PATH:
+        with _migration_lock:
+            if _migrated_for_path != DB_PATH:
+                _run_migration(conn)
+                _migrated_for_path = DB_PATH
     return conn
+
+
+def _reset_migration_state_for_tests() -> None:
+    """Test-only hook so each `tmp_deckd` fixture gets a fresh migration run."""
+    global _migrated_for_path
+    _migrated_for_path = None
 
 
 def open_session(user_id: str, game_exe: str, game_name: str) -> str:
