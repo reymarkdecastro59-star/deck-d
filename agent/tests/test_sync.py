@@ -253,3 +253,97 @@ def test_403_does_not_leak_full_user_id_in_logs(tmp_deckd, monkeypatch, token_by
     assert long_user_id not in err
     # But the truncated prefix should
     assert long_user_id[:8] in err
+
+
+# ---------- Phase 5: backoff + auth_failed + dead-letter -------------------
+
+def test_500_arms_exponential_backoff(tmp_deckd, monkeypatch, token_by_user):
+    """After a 5xx, is_backoff_expired must be False for the base delay."""
+    token_by_user["user-a"] = "tok"
+    _seed_closed_session("user-a")
+    monkeypatch.setattr(sync.requests, "post", lambda *_a, **_kw: _Resp(500))
+
+    sync.sync_sessions()
+    state = session.get_sync_state("user-a")
+    assert state["failure_count"] == 1
+    assert state["next_retry_at"] > 0
+
+
+def test_backoff_skips_next_tick(tmp_deckd, monkeypatch, token_by_user):
+    """A user still in backoff is skipped entirely — no HTTP call issued."""
+    token_by_user["user-a"] = "tok"
+    _seed_closed_session("user-a")
+    # Prime the backoff so it's far in the future
+    session.record_sync_failure("user-a", now=int(sync.time.time()), backoff_sec=3600)
+
+    post_calls: list = []
+    monkeypatch.setattr(sync.requests, "post",
+                        lambda *a, **kw: post_calls.append(kw) or _Resp(201))
+
+    ok, failed = sync.sync_sessions()
+    assert (ok, failed) == (0, 0)
+    assert post_calls == []
+
+
+def test_success_clears_backoff(tmp_deckd, mock_post, token_by_user):
+    """A tick that syncs cleanly must wipe any prior failure state."""
+    token_by_user["user-a"] = "tok"
+    _seed_closed_session("user-a")
+    session.record_sync_failure("user-a", now=0, backoff_sec=1)  # expired immediately
+
+    sync.sync_sessions()
+    state = session.get_sync_state("user-a")
+    assert state["failure_count"] == 0
+
+
+def test_401_sets_auth_failed_and_blocks_further_ticks(
+    tmp_deckd, monkeypatch, token_by_user
+):
+    """After 401, the user stays skipped even without waiting for backoff."""
+    token_by_user["user-a"] = "tok"
+    _seed_closed_session("user-a")
+
+    monkeypatch.setattr(sync.requests, "post", lambda *_a, **_kw: _Resp(401))
+    sync.sync_sessions()
+    state = session.get_sync_state("user-a")
+    assert state["auth_failed"] == 1
+
+    # Second tick: even with a fresh post mock, no call is made
+    calls: list = []
+    monkeypatch.setattr(sync.requests, "post",
+                        lambda *a, **kw: calls.append(kw) or _Resp(201))
+    sync.sync_sessions()
+    assert calls == []
+
+
+def test_dead_letter_after_24h_of_failures(tmp_deckd, monkeypatch, token_by_user):
+    """Rows that have been stuck for 24h+ get tombstoned so they stop
+    occupying retry budget forever."""
+    token_by_user["user-a"] = "tok"
+    _seed_closed_session("user-a")
+    _seed_closed_session("user-a")
+    assert len(session.get_unsynced("user-a")) == 2
+
+    # Simulate: first failure was 25 hours ago
+    ancient = int(sync.time.time()) - 25 * 3600
+    session.record_sync_failure("user-a", now=ancient, backoff_sec=0)
+
+    # Even with a post mock that would succeed, the dead-letter branch
+    # fires first and the rows are tombstoned before HTTP.
+    post_calls: list = []
+    monkeypatch.setattr(sync.requests, "post",
+                        lambda *a, **kw: post_calls.append(kw) or _Resp(201))
+    sync.sync_sessions()
+
+    assert session.get_unsynced("user-a") == []
+    assert session.get_dead_letter_count("user-a") == 2
+    assert post_calls == []
+
+
+def test_dead_letter_survives_via_get_dead_letter_count(tmp_deckd):
+    """The row is preserved in the DB for audit — get_dead_letter_count
+    is the surfaced counter (main.py puts it in the tray tooltip)."""
+    sid = session.open_session("user-a", "g.exe", "G")
+    session.close_session(sid)
+    session.dead_letter_pending("user-a")
+    assert session.get_dead_letter_count() == 1
