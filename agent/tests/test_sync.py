@@ -128,3 +128,67 @@ def test_network_exception_leaves_row_queued(tmp_deckd, monkeypatch, token_by_us
     ok, failed = sync.sync_sessions()
     assert (ok, failed) == (0, 1)
     assert len(session.get_unsynced("user-a")) == 1
+
+
+# ---------- device attribution ---------------------------------------------
+
+def test_every_post_carries_device_headers(tmp_deckd, mock_post, token_by_user):
+    """X-Device-Id + X-Device-Name must ship on every request so the backend
+    can auto-register the install and stamp the row with device attribution."""
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a")
+
+    sync.sync_sessions()
+    call = mock_post.call_args_list[0]
+    headers = call.kwargs["headers"]
+    assert "X-Device-Id" in headers
+    assert "X-Device-Name" in headers
+    # UUID hex length is 32; with dashes it's 36. Either way it's non-empty.
+    assert len(headers["X-Device-Id"]) >= 32
+    assert headers["X-Device-Name"]  # not empty
+
+
+def test_device_id_stable_across_calls(tmp_deckd, mock_post, token_by_user):
+    """The same install must present the same device_id every request —
+    otherwise the backend would auto-register a new device on every sync
+    and the 50-device cap would trip in a matter of hours."""
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a1.exe")
+    _seed_closed_session("user-a", "a2.exe")
+
+    sync.sync_sessions()
+    ids_seen = {call.kwargs["headers"]["X-Device-Id"] for call in mock_post.call_args_list}
+    assert len(ids_seen) == 1
+
+
+def test_403_leaves_row_queued_and_logs(tmp_deckd, monkeypatch, token_by_user, capsys):
+    """Revoked device → 403. Row stays queued so an un-revoke picks it up;
+    a clear message goes to stderr so the operator sees why sync is dead."""
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a")
+
+    def revoked_post(*_a, **_kw):
+        return _Resp(403)
+    monkeypatch.setattr(sync.requests, "post", revoked_post)
+
+    ok, failed = sync.sync_sessions()
+    assert (ok, failed) == (0, 1)
+    assert len(session.get_unsynced("user-a")) == 1
+    err = capsys.readouterr().err
+    assert "revoked" in err.lower()
+
+
+def test_429_leaves_row_queued_and_logs(tmp_deckd, monkeypatch, token_by_user, capsys):
+    """Device-limit-exceeded → 429. Same policy as 403 — surface it and hold the row."""
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a")
+
+    def throttled_post(*_a, **_kw):
+        return _Resp(429)
+    monkeypatch.setattr(sync.requests, "post", throttled_post)
+
+    ok, failed = sync.sync_sessions()
+    assert (ok, failed) == (0, 1)
+    assert len(session.get_unsynced("user-a")) == 1
+    err = capsys.readouterr().err
+    assert "throttled" in err.lower() or "429" in err
