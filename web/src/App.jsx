@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Landing from '@/pages/landing/landing_index'
 import Login from '@/pages/login/Login'
 import Dashboard from '@/pages/dashboard/Dashboard'
+import Devices from '@/pages/settings/Devices'
 import { AuthProvider, ProtectedRoute } from '@/auth/AuthContext'
 
 export default function App() {
@@ -16,6 +17,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/devices"
+            element={
+              <ProtectedRoute>
+                <Devices />
               </ProtectedRoute>
             }
           />
