@@ -166,6 +166,12 @@ def update_session_label(user_id: str, session_id: str, label: str) -> Optional[
 # Device registry (per-user)
 # ---------------------------------------------------------------------------
 
+MAX_DEVICES_PER_USER = 50
+
+
+class DeviceLimitExceededError(Exception):
+    """Raised when a user tries to register more than MAX_DEVICES_PER_USER devices."""
+
 
 def get_device(user_id: str, device_id: str) -> Optional[Device]:
     resp = get_table().get_item(Key={"pk": f"USER#{user_id}", "sk": f"DEVICE#{device_id}"})
@@ -185,10 +191,18 @@ def touch_device(user_id: str, device_id: str, device_name: str) -> Device:
     Upsert the device row and return it. Sets first_seen on creation, always
     bumps last_seen. Never resurrects a revoked device — caller must check
     `.is_revoked` on the return value and refuse the request if true.
+
+    Raises DeviceLimitExceededError if the caller tries to register a new
+    device beyond MAX_DEVICES_PER_USER — prevents a compromised or malicious
+    token from flooding one user's partition with rows.
     """
     now = int(time.time())
     existing = get_device(user_id, device_id)
     if existing is None:
+        if len(list_devices(user_id)) >= MAX_DEVICES_PER_USER:
+            raise DeviceLimitExceededError(
+                f"user {user_id} already has {MAX_DEVICES_PER_USER} devices registered"
+            )
         device = Device(
             user_id=user_id, device_id=device_id, device_name=device_name,
             first_seen=now, last_seen=now,

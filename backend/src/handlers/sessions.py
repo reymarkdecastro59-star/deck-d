@@ -6,7 +6,7 @@ from shared.auth import get_user_id, get_user_email
 from shared.cors import CORS_HEADERS
 from shared.db import (
     put_session, put_sessions_batch, get_sessions, get_or_create_profile,
-    delete_session, update_session_label, touch_device,
+    delete_session, update_session_label, touch_device, DeviceLimitExceededError,
 )
 from shared.models import Session
 from shared.schemas import SessionCreate, SessionBatchCreate, SessionPatch
@@ -60,10 +60,16 @@ def _resolve_device(event: dict, user_id: str) -> Tuple[Optional[str], Optional[
     if not device_id:
         return None, None
     device_name = _get_header(event, "X-Device-Name") or "unnamed-device"
-    device = touch_device(user_id, device_id, device_name)
+    try:
+        device = touch_device(user_id, device_id, device_name)
+    except DeviceLimitExceededError:
+        logger.warning("device_limit_exceeded", user_id=user_id)
+        return None, _resp(429, {"error": "device_limit_exceeded"})
     if device.is_revoked:
-        logger.warning("session_from_revoked_device", user_id=user_id, device_id=device_id)
-        return None, _resp(403, {"error": "device_revoked", "device_id": device_id})
+        # Don't echo the client-supplied device_id back — it turns the response
+        # into an existence oracle for revoked IDs and a reflected-value risk.
+        logger.warning("session_from_revoked_device", user_id=user_id)
+        return None, _resp(403, {"error": "device_revoked"})
     return device_id, None
 
 

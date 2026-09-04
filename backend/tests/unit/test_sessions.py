@@ -306,7 +306,8 @@ def test_post_session_from_revoked_device_returns_403(ddb_table):
     assert resp["statusCode"] == 403
     body = json.loads(resp["body"])
     assert body["error"] == "device_revoked"
-    assert body["device_id"] == "dev-abc"
+    # Client-supplied device_id must NOT be echoed — it's an existence oracle.
+    assert "device_id" not in body
     # No session written
     assert db_module.get_sessions(USER_ID, limit=10) == []
 
@@ -353,6 +354,29 @@ def test_post_batch_from_revoked_device_returns_403(ddb_table):
     resp = handler(event, FakeLambdaContext())
     assert resp["statusCode"] == 403
     assert db_module.get_sessions(USER_ID, limit=10) == []
+
+
+def test_post_session_rejects_new_device_beyond_cap(ddb_table):
+    """Registering the 51st device fails with 429; existing devices still work."""
+    for i in range(_db_for_device_tests.MAX_DEVICES_PER_USER):
+        _db_for_device_tests.touch_device(USER_ID, f"dev-{i}", f"PC-{i}")
+
+    event = make_event(
+        method="POST",
+        body=_session_body(),
+        headers={"X-Device-Id": "dev-overflow", "X-Device-Name": "New PC"},
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 429
+    assert json.loads(resp["body"])["error"] == "device_limit_exceeded"
+    # Existing devices unaffected — resend from dev-0 succeeds
+    event2 = make_event(
+        method="POST",
+        body=_session_body("existing-device-session"),
+        headers={"X-Device-Id": "dev-0", "X-Device-Name": "PC-0"},
+    )
+    resp2 = handler(event2, FakeLambdaContext())
+    assert resp2["statusCode"] == 201
 
 
 # ---------------------------------------------------------------------------
