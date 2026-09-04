@@ -39,7 +39,7 @@ def _patch_profile(event: dict) -> dict:
     try:
         data = ProfilePatch.model_validate(json.loads(event.get("body") or "{}"))
     except ValidationError as e:
-        return _resp(400, {"error": "validation_failed", "details": e.errors()})
+        return _resp(400, {"error": "validation_failed", "details": e.errors(include_context=False, include_input=False, include_url=False)})
 
     editable = {k: v for k, v in data.model_dump(exclude_none=True).items()}
     profile = update_profile(user_id, **editable)

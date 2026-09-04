@@ -1,4 +1,6 @@
 ﻿import json
+import time
+
 import pytest
 import shared.db as db_module
 from shared.models import Session
@@ -138,6 +140,115 @@ def test_post_session_empty_body(ddb_table):
     assert json.loads(resp["body"])["error"] == "validation_failed"
 
 
+def test_post_session_zero_duration_rejected(ddb_table):
+    """duration_sec must be > 0."""
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_000_000,
+            "ended_at": 1_700_003_600,
+            "duration_sec": 0,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_post_session_negative_duration_rejected(ddb_table):
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_000_000,
+            "ended_at": 1_700_003_600,
+            "duration_sec": -60,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_post_session_inverted_range_rejected(ddb_table):
+    """started_at >= ended_at is nonsensical and must be rejected."""
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": 1_700_010_000,
+            "ended_at": 1_700_000_000,
+            "duration_sec": 3600,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_post_session_equal_start_end_rejected(ddb_table):
+    """started_at == ended_at is a zero-length session — reject."""
+    ts = 1_700_000_000
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": ts,
+            "ended_at": ts,
+            "duration_sec": 1,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_post_session_future_dated_rejected(ddb_table):
+    """ended_at far in the future (beyond clock skew tolerance) must be rejected."""
+    now = int(time.time())
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": now + 3600,
+            "ended_at": now + 7200,
+            "duration_sec": 3600,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+
+
+def test_post_session_slight_future_within_tolerance_accepted(ddb_table):
+    """A session ending a few seconds in the future is accepted (clock skew tolerance)."""
+    now = int(time.time())
+    event = make_event(
+        method="POST",
+        body={
+            "session_id": "s1",
+            "game_exe": "game.exe",
+            "game_name": "My Game",
+            "started_at": now - 30,
+            "ended_at": now + 10,
+            "duration_sec": 40,
+        },
+    )
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 201
+
+
 # ---------------------------------------------------------------------------
 # POST /sessions/batch
 # ---------------------------------------------------------------------------
@@ -253,6 +364,19 @@ def test_batch_duplicate_session_ids_last_wins(ddb_table):
     stored = db_module.get_sessions(USER_ID, limit=10)
     assert len(stored) == 1
     assert stored[0].game_name == "Second Game"
+
+
+def test_batch_rejects_bad_child(ddb_table):
+    """One invalid child (inverted range) rejects the whole batch — nothing written."""
+    good = _make_session_payload("s1", 1_700_000_000)
+    bad = _make_session_payload("s2", 1_700_010_000)
+    bad["ended_at"] = bad["started_at"] - 1  # inverted range
+    event = _batch_event(body={"sessions": [good, bad]})
+    resp = handler(event, FakeLambdaContext())
+    assert resp["statusCode"] == 400
+    assert json.loads(resp["body"])["error"] == "validation_failed"
+    stored = db_module.get_sessions(USER_ID, limit=10)
+    assert stored == []
 
 
 def test_batch_creates_profile(ddb_table):
