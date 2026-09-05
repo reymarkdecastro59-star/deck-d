@@ -1,9 +1,12 @@
-﻿import os
+﻿import logging
+import os
 import time
 from typing import Optional
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from .models import Session, UserProfile, Device
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Game metadata helpers
@@ -32,7 +35,7 @@ def batch_get_game_metadata(exe_lowers: list[str]) -> dict[str, dict]:
     # Go through the resource so items come back already deserialized
     # from AttributeValue form (str/int/bool instead of {"S": "..."}).
     table_name = os.environ["TABLE_NAME"]
-    resource = boto3.resource("dynamodb")
+    resource = _get_resource()
     out: dict[str, dict] = {}
     for i in range(0, len(exe_lowers), 100):
         chunk = exe_lowers[i:i + 100]
@@ -46,6 +49,12 @@ def batch_get_game_metadata(exe_lowers: list[str]) -> dict[str, dict]:
             exe = item.get("game_exe")
             if exe:
                 out[exe] = item
+        unprocessed = resp.get("UnprocessedKeys", {}).get(table_name, {}).get("Keys", [])
+        if unprocessed:
+            logger.warning(
+                "batch_get_game_metadata: %d key(s) unprocessed (throttling); falling back to exe-grouping for those",
+                len(unprocessed),
+            )
     return out
 
 
@@ -98,14 +107,22 @@ def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[s
         kwargs["ExclusiveStartKey"] = last_key
     return seen
 
+_resource = None
 _table = None
+
+
+def _get_resource():
+    """Module-level DynamoDB resource singleton — reused across Lambda warm invocations."""
+    global _resource
+    if _resource is None:
+        _resource = boto3.resource("dynamodb")
+    return _resource
 
 
 def get_table():
     global _table
     if _table is None:
-        dynamodb = boto3.resource("dynamodb")
-        _table = dynamodb.Table(os.environ["TABLE_NAME"])
+        _table = _get_resource().Table(os.environ["TABLE_NAME"])
     return _table
 
 
