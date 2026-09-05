@@ -133,7 +133,10 @@ def sync_sessions() -> tuple[int, int]:
                         store.mark_revoked(user_id)
                         token_store.write(store)
                     except token_store.TokenStoreError:
-                        pass  # user_id no longer in store (rare race with logout); revocation is moot
+                        # Account was logged out between our read and this 403 — revocation
+                        # is moot and there's no email to notify against. Skip the toast.
+                        failed_total += len(rows) - idx
+                        break
                     account = store.get(user_id)
                     email = account.email if account else user_id[:8]
                     notifications.on_device_revoked_by_backend(email)

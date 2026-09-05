@@ -494,3 +494,26 @@ def test_401_and_429_behaviour_unchanged(tmp_deckd, monkeypatch, token_by_user, 
         reloaded = token_store.read()
         assert reloaded.is_revoked("user-a") is False
     mock_notify.assert_not_called()
+
+
+def test_403_device_revoked_when_account_already_logged_out_does_not_notify(
+    tmp_deckd, monkeypatch, token_by_user, mock_notify
+):
+    """Race: sync gets 403 device_revoked, but the account was logged out
+    between our read and now. mark_revoked raises TokenStoreError; we must
+    not fire a toast against a truncated user_id fallback."""
+    from unittest.mock import MagicMock
+
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a.exe")
+    # Deliberately DO NOT upsert an Account for user-a; token_by_user only
+    # feeds get_id_token, not the token_store. mark_revoked will raise
+    # TokenStoreError.
+
+    post = MagicMock(return_value=_JsonResp(403, body={"error": "device_revoked"}))
+    monkeypatch.setattr(sync.requests, "post", post)
+
+    ok, failed = sync.sync_sessions()
+    assert ok == 0
+    assert failed >= 1
+    mock_notify.assert_not_called()
