@@ -1,9 +1,12 @@
-﻿import os
+﻿import logging
+import os
 import time
 from typing import Optional
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from .models import Session, UserProfile, Device
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Game metadata helpers
@@ -17,6 +20,42 @@ def put_game_metadata(metadata: dict) -> None:
 def get_game_metadata(exe_lower: str) -> Optional[dict]:
     resp = get_table().get_item(Key={"pk": f"GAME#{exe_lower}", "sk": "METADATA"})
     return resp.get("Item")
+
+
+def batch_get_game_metadata(exe_lowers: list[str]) -> dict[str, dict]:
+    """Bulk-fetch RAWG metadata items keyed by exe_lower.
+
+    DynamoDB batch_get_item takes at most 100 keys per call; chunks are
+    issued sequentially. UnprocessedKeys (rare, throttling-induced) are
+    dropped silently — the caller falls back to the exe/name grouping
+    for any exe whose metadata didn't come back.
+    """
+    if not exe_lowers:
+        return {}
+    # Go through the resource so items come back already deserialized
+    # from AttributeValue form (str/int/bool instead of {"S": "..."}).
+    table_name = os.environ["TABLE_NAME"]
+    resource = _get_resource()
+    out: dict[str, dict] = {}
+    for i in range(0, len(exe_lowers), 100):
+        chunk = exe_lowers[i:i + 100]
+        request = {
+            table_name: {
+                "Keys": [{"pk": f"GAME#{exe}", "sk": "METADATA"} for exe in chunk],
+            }
+        }
+        resp = resource.batch_get_item(RequestItems=request)
+        for item in resp.get("Responses", {}).get(table_name, []):
+            exe = item.get("game_exe")
+            if exe:
+                out[exe] = item
+        unprocessed = resp.get("UnprocessedKeys", {}).get(table_name, {}).get("Keys", [])
+        if unprocessed:
+            logger.warning(
+                "batch_get_game_metadata: %d key(s) unprocessed (throttling); falling back to exe-grouping for those",
+                len(unprocessed),
+            )
+    return out
 
 
 def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
@@ -68,14 +107,22 @@ def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[s
         kwargs["ExclusiveStartKey"] = last_key
     return seen
 
+_resource = None
 _table = None
+
+
+def _get_resource():
+    """Module-level DynamoDB resource singleton — reused across Lambda warm invocations."""
+    global _resource
+    if _resource is None:
+        _resource = boto3.resource("dynamodb")
+    return _resource
 
 
 def get_table():
     global _table
     if _table is None:
-        dynamodb = boto3.resource("dynamodb")
-        _table = dynamodb.Table(os.environ["TABLE_NAME"])
+        _table = _get_resource().Table(os.environ["TABLE_NAME"])
     return _table
 
 
