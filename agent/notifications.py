@@ -36,6 +36,8 @@ _notified_orphan_exes: set[str] = set()
 
 
 def _toast(title: str, body: str) -> None:
+    if Notification is None:  # non-Windows fallback for tests without the mock
+        return
     n = Notification(app_id=APP_ID, title=title, msg=body, icon=_ICON)
     n.set_audio(audio.Default, loop=False)
     n.show()

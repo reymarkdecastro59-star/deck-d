@@ -37,6 +37,7 @@ def _sync_loop():
             # Never let a single sync tick kill the thread — that would
             # leave the queue growing silently until the user notices.
             print(f"[deckd] sync tick raised: {exc}", file=sys.stderr)
+        _refresh_tray()  # Phase 6: pick up any state changes (new logins, revocations cleared, etc.)
 
 
 # ---------- tooltip + menu (Phase 6 + Phase 5 dead-letter counter) ---------
@@ -168,7 +169,9 @@ def _confirm_switch_dialog(open_games) -> bool:
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
-    t.join()
+    t.join(timeout=60)   # cap the wait so a hung Tk can't freeze the tray thread
+    if t.is_alive():
+        return False     # dialog never returned; treat as cancellation
     try:
         return q.get_nowait()
     except queue.Empty:
@@ -189,14 +192,19 @@ def _on_logout(icon, item):
 
 
 def _on_retry_sync(icon, item):
-    """Clear all local revoked flags and force a sync tick."""
+    """Clear all local revoked flags and force a sync tick (async so tray stays responsive)."""
     store = token_store.read()
     for a in store.accounts:
         if a.revoked_at is not None:
             store.clear_revoked(a.user_id)
     token_store.write(store)
-    sync.sync_sessions()
-    _refresh_tray()
+    _refresh_tray()  # immediate menu update
+
+    def _drain():
+        sync.sync_sessions()
+        _refresh_tray()
+
+    threading.Thread(target=_drain, daemon=True).start()
 
 
 def _on_quit(icon, item):
