@@ -167,3 +167,47 @@ def test_switch_click_with_open_game_and_cancel_does_not_switch(tmp_deckd, monke
 
     switched.assert_not_called()
     reset.assert_not_called()
+
+
+# ---------- retry sync / add / logout handlers ------------------------------
+
+def test_on_retry_sync_clears_all_revoked_and_triggers_sync(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1",
+          revoked=("u1", "u2"))
+
+    sync_mock = MagicMock(return_value=(2, 0))
+    monkeypatch.setattr(main.sync, "sync_sessions", sync_mock)
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+
+    main._on_retry_sync(MagicMock(), MagicMock())
+
+    reloaded = token_store.read()
+    assert reloaded.is_revoked("u1") is False
+    assert reloaded.is_revoked("u2") is False
+    sync_mock.assert_called_once()
+
+
+def test_on_logout_removes_active_account(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com")], active_user_id="u1")
+
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+    main._on_logout(MagicMock(), MagicMock())
+
+    reloaded = token_store.read()
+    assert reloaded.accounts == []
+
+
+def test_on_add_account_spawns_login_subprocess(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([])
+    popen = MagicMock()
+    monkeypatch.setattr(main.subprocess, "Popen", popen)
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+
+    main._on_add_account(MagicMock(), MagicMock())
+
+    popen.assert_called_once()
+    args = popen.call_args.args[0]
+    assert any("login.py" in str(a) for a in args)

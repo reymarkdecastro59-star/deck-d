@@ -1,6 +1,8 @@
 import sys
 import threading
 import time
+import subprocess
+import os
 
 import pystray
 from PIL import Image, ImageDraw
@@ -174,18 +176,27 @@ def _confirm_switch_dialog(open_games) -> bool:
 
 
 def _on_add_account(icon, item):
-    """Wired up in Task 7."""
-    pass
+    """Spawn login.py as a detached subprocess. Fire-and-forget — tray reads store fresh."""
+    login_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "login.py")
+    subprocess.Popen([sys.executable, login_path])
+    _refresh_tray()
 
 
 def _on_logout(icon, item):
-    """Wired up in Task 7."""
-    pass
+    """Remove the active account and refresh the tray."""
+    auth.logout()
+    _refresh_tray()
 
 
 def _on_retry_sync(icon, item):
-    """Wired up in Task 7."""
-    pass
+    """Clear all local revoked flags and force a sync tick."""
+    store = token_store.read()
+    for a in store.accounts:
+        if a.revoked_at is not None:
+            store.clear_revoked(a.user_id)
+    token_store.write(store)
+    sync.sync_sessions()
+    _refresh_tray()
 
 
 def _on_quit(icon, item):
