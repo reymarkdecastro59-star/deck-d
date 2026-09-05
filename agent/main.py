@@ -159,8 +159,8 @@ def _confirm_switch_dialog(open_games) -> bool:
                 ),
                 icon="warning",
             )
+            q.put(bool(answer))  # capture the answer BEFORE destroy so a destroy exception can't drop a Yes
             root.destroy()
-            q.put(bool(answer))
         except Exception:
             q.put(False)  # any dialog failure defaults to not-switching
 
