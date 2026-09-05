@@ -16,6 +16,8 @@ from session import (
 )
 from token_store import get_device_id, get_device_name
 from config import API_URL
+import notifications
+import token_store
 
 # Exponential backoff schedule for transient failures. Doubles per failure
 # up to _BACKOFF_CAP_SEC. Fresh failures start at _BACKOFF_BASE_SEC.
@@ -56,7 +58,11 @@ def sync_sessions() -> tuple[int, int]:
 
     Returns (ok_count, failed_count) totalled across accounts.
     """
-    pending_users = get_pending_user_ids()
+    raw_pending = get_pending_user_ids()
+    if not raw_pending:
+        return 0, 0
+    store_snapshot = token_store.read()
+    pending_users = [uid for uid in raw_pending if not store_snapshot.is_revoked(uid)]
     if not pending_users:
         return 0, 0
 
@@ -118,13 +124,32 @@ def sync_sessions() -> tuple[int, int]:
                 if resp.status_code in (200, 201):
                     mark_synced(s["session_id"])
                     ok_total += 1
+                elif resp.status_code == 403 and _is_device_revoked(resp):
+                    # Phase 6: backend says this device is revoked.
+                    # Mark the account revoked locally so the pre-filter (line 65)
+                    # skips it next tick, and toast the user so they can un-revoke.
+                    store = token_store.read()
+                    try:
+                        store.mark_revoked(user_id)
+                        token_store.write(store)
+                    except token_store.TokenStoreError:
+                        pass  # user_id no longer in store (rare race with logout); revocation is moot
+                    account = store.get(user_id)
+                    email = account.email if account else user_id[:8]
+                    notifications.on_device_revoked_by_backend(email)
+                    account_had_failure = True
+                    failed_total += len(rows) - idx
+                    break
                 elif resp.status_code == 401:
+                    # Phase 5: 401 = token permanently bad. Pause the account
+                    # until re-login clears the auth_failed flag.
                     _log_terminal(401, user_id, device_id)
                     mark_auth_failed(user_id, now)
                     account_had_failure = True
                     failed_total += len(rows) - idx
                     break
                 elif resp.status_code in (403, 429):
+                    # Generic 403 (non-device_revoked) or 429 — backoff and retry.
                     _log_terminal(resp.status_code, user_id, device_id)
                     account_had_failure = True
                     failed_total += len(rows) - idx
@@ -168,3 +193,11 @@ def _log_terminal(status_code: int, user_id: str, device_id: str) -> None:
             "device limit exceeded or rate-limited."
         )
     print(msg, file=sys.stderr)
+
+
+def _is_device_revoked(resp) -> bool:
+    """True iff the response body is {'error': 'device_revoked'}. Safe for non-JSON bodies."""
+    try:
+        return resp.json().get("error") == "device_revoked"
+    except (ValueError, AttributeError):
+        return False
