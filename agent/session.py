@@ -228,38 +228,34 @@ def record_sync_success(user_id: str) -> None:
 
 
 def record_sync_failure(user_id: str, now: int, backoff_sec: int) -> None:
-    """Increment failure count and schedule the next retry."""
-    state = get_sync_state(user_id)
+    """Increment failure count and schedule the next retry (atomic upsert)."""
     with _get_conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO sync_state "
+            "INSERT INTO sync_state "
             "(user_id, failure_count, next_retry_at, first_failure_at, auth_failed) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (
-                user_id,
-                state["failure_count"] + 1,
-                now + backoff_sec,
-                state["first_failure_at"] or now,
-                state["auth_failed"],
-            ),
+            "VALUES (?, 1, ?, ?, 0) "
+            "ON CONFLICT(user_id) DO UPDATE SET "
+            "failure_count = failure_count + 1, "
+            "next_retry_at = excluded.next_retry_at, "
+            "first_failure_at = COALESCE(sync_state.first_failure_at, excluded.first_failure_at)",
+            (user_id, now + backoff_sec, now),
         )
 
 
 def mark_auth_failed(user_id: str, now: int) -> None:
     """Persistent flag: server rejected our token. Skip this user in sync
-    until a re-login clears the flag."""
-    state = get_sync_state(user_id)
+    until a re-login clears the flag. Atomic — no read-modify-write race."""
     with _get_conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO sync_state "
+            "INSERT INTO sync_state "
             "(user_id, failure_count, next_retry_at, first_failure_at, auth_failed) "
-            "VALUES (?, ?, ?, ?, 1)",
-            (
-                user_id,
-                state["failure_count"] + 1,
-                now + 3600,  # even if user re-logs, don't retry storm; next attempt in 1h
-                state["first_failure_at"] or now,
-            ),
+            "VALUES (?, 1, ?, ?, 1) "
+            "ON CONFLICT(user_id) DO UPDATE SET "
+            "failure_count = failure_count + 1, "
+            "next_retry_at = excluded.next_retry_at, "
+            "first_failure_at = COALESCE(sync_state.first_failure_at, excluded.first_failure_at), "
+            "auth_failed = 1",
+            (user_id, now + 3600, now),
         )
 
 

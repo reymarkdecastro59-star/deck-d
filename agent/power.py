@@ -30,10 +30,49 @@ _PBT_APMSUSPEND = 0x0004
 _PBT_APMRESUMEAUTOMATIC = 0x0012
 _PBT_APMRESUMESUSPEND = 0x0007
 
+_WM_WTSSESSION_CHANGE = 0x02B1
+_WTS_SESSION_LOCK = 0x0007
+_WTS_SESSION_UNLOCK = 0x0008
+
 _thread: Optional[threading.Thread] = None
 _hwnd = None
 _on_suspend: Optional[Callable[[], None]] = None
 _on_resume: Optional[Callable[[], None]] = None
+
+
+def _dispatch_power_message(msg, wparam) -> None:
+    """Route a Windows power/session-change message to the registered callback.
+
+    Extracted from wnd_proc so tests can exercise the routing logic without
+    a real Win32 message pump. Callback exceptions are caught and printed
+    to stderr — they must never propagate back into the pump.
+    """
+    if msg == _WM_POWERBROADCAST:
+        if wparam == _PBT_APMSUSPEND:
+            if _on_suspend is not None:
+                try:
+                    _on_suspend()
+                except Exception as exc:
+                    print(f"[deckd] power suspend callback raised: {exc}", file=sys.stderr)
+        elif wparam in (_PBT_APMRESUMEAUTOMATIC, _PBT_APMRESUMESUSPEND):
+            if _on_resume is not None:
+                try:
+                    _on_resume()
+                except Exception as exc:
+                    print(f"[deckd] power resume callback raised: {exc}", file=sys.stderr)
+    elif msg == _WM_WTSSESSION_CHANGE:
+        if wparam == _WTS_SESSION_LOCK:
+            if _on_suspend is not None:
+                try:
+                    _on_suspend()
+                except Exception as exc:
+                    print(f"[deckd] session lock callback raised: {exc}", file=sys.stderr)
+        elif wparam == _WTS_SESSION_UNLOCK:
+            if _on_resume is not None:
+                try:
+                    _on_resume()
+                except Exception as exc:
+                    print(f"[deckd] session unlock callback raised: {exc}", file=sys.stderr)
 
 
 def start(on_suspend: Callable[[], None], on_resume: Callable[[], None]) -> None:
@@ -80,20 +119,10 @@ def _run_message_pump() -> None:
     import win32gui
 
     def wnd_proc(hwnd, msg, wparam, lparam):
-        if msg == _WM_POWERBROADCAST:
-            if wparam == _PBT_APMSUSPEND:
-                if _on_suspend is not None:
-                    try:
-                        _on_suspend()
-                    except Exception as exc:
-                        print(f"[deckd] power on_suspend raised: {exc}", file=sys.stderr)
-            elif wparam in (_PBT_APMRESUMEAUTOMATIC, _PBT_APMRESUMESUSPEND):
-                if _on_resume is not None:
-                    try:
-                        _on_resume()
-                    except Exception as exc:
-                        print(f"[deckd] power on_resume raised: {exc}", file=sys.stderr)
-            return True
+        _dispatch_power_message(msg, wparam)
+        if msg == win32con.WM_DESTROY:
+            win32api.PostQuitMessage(0)
+            return 0
         return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
     class_name = "DeckdPowerEventsHiddenWindow"

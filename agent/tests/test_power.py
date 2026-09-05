@@ -132,3 +132,68 @@ def test_suspend_then_resume_produces_two_separate_sessions(tmp_deckd, monkeypat
     with watcher._lock:
         for exe in list(watcher._active):
             watcher._active.pop(exe)
+
+
+# ---------- wnd_proc routing (I4) --------------------------------------------
+
+def test_dispatch_suspend_message_calls_suspend_callback(monkeypatch):
+    import power
+    called = []
+    monkeypatch.setattr(power, "_on_suspend", lambda: called.append("suspend"))
+    monkeypatch.setattr(power, "_on_resume", lambda: called.append("resume"))
+    power._dispatch_power_message(power._WM_POWERBROADCAST, power._PBT_APMSUSPEND)
+    assert called == ["suspend"]
+
+
+def test_dispatch_resume_automatic_calls_resume_callback(monkeypatch):
+    import power
+    called = []
+    monkeypatch.setattr(power, "_on_suspend", lambda: called.append("suspend"))
+    monkeypatch.setattr(power, "_on_resume", lambda: called.append("resume"))
+    power._dispatch_power_message(power._WM_POWERBROADCAST, power._PBT_APMRESUMEAUTOMATIC)
+    assert called == ["resume"]
+
+
+def test_dispatch_resume_suspend_calls_resume_callback(monkeypatch):
+    import power
+    called = []
+    monkeypatch.setattr(power, "_on_resume", lambda: called.append("resume"))
+    power._dispatch_power_message(power._WM_POWERBROADCAST, power._PBT_APMRESUMESUSPEND)
+    assert called == ["resume"]
+
+
+def test_dispatch_session_lock_calls_suspend_callback(monkeypatch):
+    import power
+    called = []
+    monkeypatch.setattr(power, "_on_suspend", lambda: called.append("suspend"))
+    power._dispatch_power_message(power._WM_WTSSESSION_CHANGE, power._WTS_SESSION_LOCK)
+    assert called == ["suspend"]
+
+
+def test_dispatch_session_unlock_calls_resume_callback(monkeypatch):
+    import power
+    called = []
+    monkeypatch.setattr(power, "_on_resume", lambda: called.append("resume"))
+    power._dispatch_power_message(power._WM_WTSSESSION_CHANGE, power._WTS_SESSION_UNLOCK)
+    assert called == ["resume"]
+
+
+def test_dispatch_unknown_message_is_noop(monkeypatch):
+    import power
+    called = []
+    monkeypatch.setattr(power, "_on_suspend", lambda: called.append("suspend"))
+    monkeypatch.setattr(power, "_on_resume", lambda: called.append("resume"))
+    power._dispatch_power_message(0xDEADBEEF, 0)
+    power._dispatch_power_message(power._WM_POWERBROADCAST, 0xDEADBEEF)
+    assert called == []
+
+
+def test_dispatch_callback_exception_is_swallowed(monkeypatch, capsys):
+    import power
+    def boom():
+        raise RuntimeError("kaboom")
+    monkeypatch.setattr(power, "_on_suspend", boom)
+    # Must not raise
+    power._dispatch_power_message(power._WM_POWERBROADCAST, power._PBT_APMSUSPEND)
+    captured = capsys.readouterr()
+    assert "kaboom" in captured.err
