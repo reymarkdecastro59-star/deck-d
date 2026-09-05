@@ -5,6 +5,8 @@ import time
 import pystray
 from PIL import Image, ImageDraw
 
+import auth
+import notifications
 import token_store
 import watcher
 import sync
@@ -112,9 +114,63 @@ def _refresh_tray(icon=None):
 
 # ---------- handlers (stubs; wired up in Tasks 7 and 8) --------------------
 
-def _on_switch_click(target_user_id: str):
-    """Wired up in Task 6."""
-    pass
+def _on_switch_click(target_user_id: str) -> None:
+    """Switch active account. If games are open, ask the user first."""
+    store = token_store.read()
+    if store.active_user_id == target_user_id:
+        return  # radio-click on the already-active row
+
+    open_games = watcher.list_open_sessions()
+    if open_games and not _confirm_switch_dialog(open_games):
+        return
+
+    auth.switch_account(target_user_id)
+    notifications.reset_session_dedup()
+    _refresh_tray()
+
+
+def _confirm_switch_dialog(open_games) -> bool:
+    """
+    Prompt the user before switching mid-game.
+
+    Runs Tk on a dedicated thread and joins — a Tk root cannot safely live
+    on the pystray thread. Returns True for Yes, False for No/close.
+    """
+    import queue
+    q: "queue.Queue[bool]" = queue.Queue()
+
+    def _run():
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            store = token_store.read()
+            current = store.active_healthy() or store.active()
+            current_email = current.email if current else "the current account"
+            game_names = ", ".join(name for _, name in open_games)
+            answer = messagebox.askyesno(
+                title="DECK'D — Switch account?",
+                message=(
+                    f"{game_names} is playing under {current_email}.\n\n"
+                    f"Switching won't reassign this session — playtime stays with "
+                    f"{current_email}. Switch active account anyway?"
+                ),
+                icon="warning",
+            )
+            root.destroy()
+            q.put(bool(answer))
+        except Exception:
+            q.put(False)  # any dialog failure defaults to not-switching
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join()
+    try:
+        return q.get_nowait()
+    except queue.Empty:
+        return False
 
 
 def _on_add_account(icon, item):

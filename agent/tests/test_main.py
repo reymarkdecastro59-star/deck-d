@@ -95,3 +95,75 @@ def test_switch_submenu_disables_revoked_accounts(tmp_deckd):
             assert sub.enabled is False or callable(sub.enabled) and sub.enabled(sub) is False
         if sub.text == "a@x.com":
             assert sub.enabled is True or callable(sub.enabled) and sub.enabled(sub) is True
+
+
+# ---------- switch handler (Gap B) ------------------------------------------
+
+def test_switch_click_same_user_is_noop(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", MagicMock())
+
+    main._on_switch_click("u1")
+    switched.assert_not_called()
+
+
+def test_switch_click_no_games_switches_immediately(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    reset = MagicMock()
+    refresh = MagicMock()
+    dialog = MagicMock()
+
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", reset)
+    monkeypatch.setattr(main, "_refresh_tray", refresh)
+    monkeypatch.setattr(main, "_confirm_switch_dialog", dialog)
+    monkeypatch.setattr(main.watcher, "list_open_sessions", lambda: [])
+
+    main._on_switch_click("u2")
+
+    dialog.assert_not_called()
+    switched.assert_called_once_with("u2")
+    reset.assert_called_once()
+    refresh.assert_called_once()
+
+
+def test_switch_click_with_open_game_and_confirm_switches(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", MagicMock())
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+    monkeypatch.setattr(main, "_confirm_switch_dialog", lambda games: True)
+    monkeypatch.setattr(main.watcher, "list_open_sessions",
+                        lambda: [("game.exe", "Cool Game")])
+
+    main._on_switch_click("u2")
+    switched.assert_called_once_with("u2")
+
+
+def test_switch_click_with_open_game_and_cancel_does_not_switch(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    reset = MagicMock()
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", reset)
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+    monkeypatch.setattr(main, "_confirm_switch_dialog", lambda games: False)
+    monkeypatch.setattr(main.watcher, "list_open_sessions",
+                        lambda: [("game.exe", "Cool Game")])
+
+    main._on_switch_click("u2")
+
+    switched.assert_not_called()
+    reset.assert_not_called()
