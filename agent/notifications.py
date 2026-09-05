@@ -18,7 +18,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from winotify import Notification, audio
+# Guard winotify import for non-Windows CI (matches token_store.py:50 local-import pattern)
+try:
+    from winotify import Notification, audio
+except ModuleNotFoundError:  # non-Windows CI / dev machines without winotify
+    Notification = None  # type: ignore[assignment,misc]
+    audio = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     from token_store import Account
