@@ -347,3 +347,173 @@ def test_dead_letter_survives_via_get_dead_letter_count(tmp_deckd):
     session.close_session(sid)
     session.dead_letter_pending("user-a")
     assert session.get_dead_letter_count() == 1
+
+
+# ---------- Gap C: device revocation (Phase 6) ------------------------------
+
+class _JsonResp:
+    """Response with a .json() method for the 403 device_revoked branch."""
+    def __init__(self, status_code: int, body: dict | None = None, raw: str | None = None):
+        self.status_code = status_code
+        self._body = body
+        self._raw = raw
+
+    def json(self):
+        if self._body is not None:
+            return self._body
+        if self._raw is not None:
+            import json as _json
+            return _json.loads(self._raw)  # raises ValueError for malformed
+        raise ValueError("no body")
+
+
+@pytest.fixture
+def mock_notify(monkeypatch):
+    """Patch the notifications functions sync imports."""
+    from unittest.mock import MagicMock
+    mock = MagicMock()
+    monkeypatch.setattr(sync.notifications, "on_device_revoked_by_backend", mock)
+    return mock
+
+
+def test_revoked_account_is_skipped_from_pending(tmp_deckd, mock_post, token_by_user):
+    import token_store
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a.exe")
+
+    store = token_store.read()
+    store.upsert(token_store.Account(
+        user_id="user-a", email="a@x.com",
+        id_token="t", refresh_token="r", expires_at=1_700_000_000,
+    ))
+    store.mark_revoked("user-a")
+    token_store.write(store)
+
+    ok, failed = sync.sync_sessions()
+    assert (ok, failed) == (0, 0)
+    mock_post.assert_not_called()
+
+
+def test_403_device_revoked_marks_account_and_notifies(tmp_deckd, monkeypatch, token_by_user, mock_notify):
+    import token_store
+    from unittest.mock import MagicMock
+
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a.exe")
+    store = token_store.read()
+    store.upsert(token_store.Account(
+        user_id="user-a", email="a@x.com",
+        id_token="t", refresh_token="r", expires_at=1_700_000_000,
+    ))
+    token_store.write(store)
+
+    post = MagicMock(return_value=_JsonResp(403, body={"error": "device_revoked"}))
+    monkeypatch.setattr(sync.requests, "post", post)
+
+    ok, failed = sync.sync_sessions()
+    assert ok == 0
+    assert failed >= 1
+
+    reloaded = token_store.read()
+    assert reloaded.is_revoked("user-a") is True
+
+    mock_notify.assert_called_once()
+    assert "a@x.com" in mock_notify.call_args.args[0]
+
+
+def test_generic_403_does_not_mark_revoked(tmp_deckd, monkeypatch, token_by_user, mock_notify):
+    """A 403 whose body is not {'error': 'device_revoked'} falls through to generic terminal log."""
+    import token_store
+    from unittest.mock import MagicMock
+
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a.exe")
+    store = token_store.read()
+    store.upsert(token_store.Account(
+        user_id="user-a", email="a@x.com",
+        id_token="t", refresh_token="r", expires_at=1_700_000_000,
+    ))
+    token_store.write(store)
+
+    post = MagicMock(return_value=_JsonResp(403, body={"error": "other_thing"}))
+    monkeypatch.setattr(sync.requests, "post", post)
+
+    ok, failed = sync.sync_sessions()
+    assert ok == 0
+
+    reloaded = token_store.read()
+    assert reloaded.is_revoked("user-a") is False
+    mock_notify.assert_not_called()
+
+
+def test_403_with_no_json_body_does_not_crash(tmp_deckd, monkeypatch, token_by_user, mock_notify):
+    import token_store
+    from unittest.mock import MagicMock
+
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a.exe")
+    store = token_store.read()
+    store.upsert(token_store.Account(
+        user_id="user-a", email="a@x.com",
+        id_token="t", refresh_token="r", expires_at=1_700_000_000,
+    ))
+    token_store.write(store)
+
+    class _BadResp:
+        status_code = 403
+        def json(self):
+            raise ValueError("not JSON")
+
+    post = MagicMock(return_value=_BadResp())
+    monkeypatch.setattr(sync.requests, "post", post)
+
+    ok, failed = sync.sync_sessions()  # must not raise
+    reloaded = token_store.read()
+    assert reloaded.is_revoked("user-a") is False
+    mock_notify.assert_not_called()
+
+
+def test_401_and_429_behaviour_unchanged(tmp_deckd, monkeypatch, token_by_user, mock_notify):
+    """Regression guard: the 401/429 branch must not touch revocation state."""
+    import token_store
+    from unittest.mock import MagicMock
+
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a.exe")
+    store = token_store.read()
+    store.upsert(token_store.Account(
+        user_id="user-a", email="a@x.com",
+        id_token="t", refresh_token="r", expires_at=1_700_000_000,
+    ))
+    token_store.write(store)
+
+    for code in (401, 429):
+        post = MagicMock(return_value=_Resp(code))
+        monkeypatch.setattr(sync.requests, "post", post)
+        sync.sync_sessions()
+        reloaded = token_store.read()
+        assert reloaded.is_revoked("user-a") is False
+    mock_notify.assert_not_called()
+
+
+def test_403_device_revoked_when_account_already_logged_out_does_not_notify(
+    tmp_deckd, monkeypatch, token_by_user, mock_notify
+):
+    """Race: sync gets 403 device_revoked, but the account was logged out
+    between our read and now. mark_revoked raises TokenStoreError; we must
+    not fire a toast against a truncated user_id fallback."""
+    from unittest.mock import MagicMock
+
+    token_by_user["user-a"] = "tok-a"
+    _seed_closed_session("user-a", "a.exe")
+    # Deliberately DO NOT upsert an Account for user-a; token_by_user only
+    # feeds get_id_token, not the token_store. mark_revoked will raise
+    # TokenStoreError.
+
+    post = MagicMock(return_value=_JsonResp(403, body={"error": "device_revoked"}))
+    monkeypatch.setattr(sync.requests, "post", post)
+
+    ok, failed = sync.sync_sessions()
+    assert ok == 0
+    assert failed >= 1
+    mock_notify.assert_not_called()
