@@ -76,6 +76,115 @@ def test_schema_version_mismatch_raises(tmp_deckd):
         token_store.TokenStore.from_json('{"version": 99, "accounts": [], "active_user_id": null}')
 
 
+# ---------- revocation state (Phase 6) --------------------------------------
+
+def test_revoked_at_roundtrips_through_disk(tmp_deckd):
+    store = token_store.TokenStore()
+    acct = _account("user-a", "a@x.com")
+    acct.revoked_at = 1_700_500_000
+    store.upsert(acct)
+    token_store.write(store)
+
+    reloaded = token_store.read()
+    assert reloaded.get("user-a").revoked_at == 1_700_500_000
+
+
+def test_missing_revoked_at_in_v1_file_hydrates_to_none(tmp_deckd):
+    """A pre-Phase-6 file has no revoked_at key — must load as None, not crash."""
+    legacy_blob = (
+        '{"version": 1, "accounts": [{"user_id": "u", "email": "e@x.com", '
+        '"id_token": "i", "refresh_token": "r", "expires_at": 1700000000}], '
+        '"active_user_id": "u"}'
+    )
+    store = token_store.TokenStore.from_json(legacy_blob)
+    assert store.get("u").revoked_at is None
+
+
+def test_mark_and_clear_revoked(tmp_deckd):
+    store = token_store.TokenStore()
+    store.upsert(_account("user-a", "a@x.com"))
+    assert store.is_revoked("user-a") is False
+
+    store.mark_revoked("user-a")
+    assert store.is_revoked("user-a") is True
+    assert store.get("user-a").revoked_at is not None
+
+    store.clear_revoked("user-a")
+    assert store.is_revoked("user-a") is False
+    assert store.get("user-a").revoked_at is None
+
+
+def test_mark_revoked_unknown_user_raises(tmp_deckd):
+    store = token_store.TokenStore()
+    with pytest.raises(token_store.TokenStoreError):
+        store.mark_revoked("ghost")
+
+
+def test_clear_revoked_unknown_user_is_noop(tmp_deckd):
+    store = token_store.TokenStore()
+    store.clear_revoked("ghost")  # must not raise
+
+
+def test_active_healthy_returns_none_if_active_is_revoked(tmp_deckd):
+    store = token_store.TokenStore()
+    store.upsert(_account("user-a", "a@x.com"))
+    store.set_active("user-a")
+    assert store.active_healthy() is not None
+
+    store.mark_revoked("user-a")
+    assert store.active_healthy() is None
+    assert store.active() is not None  # active() unchanged — still returns the revoked account
+
+
+def test_active_healthy_returns_none_if_no_active(tmp_deckd):
+    store = token_store.TokenStore()
+    store.upsert(_account("user-a", "a@x.com"))
+    assert store.active_healthy() is None
+
+
+def test_login_clears_revoked_via_upsert(tmp_deckd, monkeypatch):
+    """
+    Behavioral guarantee: auth.login() naturally clears a locally-revoked
+    account, because it constructs a fresh Account (revoked_at=None default)
+    and upsert() replaces the old record entirely.
+
+    Locks this in so a future refactor that starts *reusing* an existing
+    Account across login flows would break this test and force a review.
+    """
+    import auth
+    import base64, json
+    from unittest.mock import MagicMock
+
+    store = token_store.TokenStore()
+    store.upsert(token_store.Account(
+        user_id="user-a", email="a@x.com",
+        id_token="stale", refresh_token="stale-r", expires_at=0,
+    ))
+    store.mark_revoked("user-a")
+    token_store.write(store)
+
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"sub": "user-a", "email": "a@x.com"}).encode()
+    ).decode().rstrip("=")
+    fake_id_token = f"h.{payload}.s"
+
+    fake_client = MagicMock()
+    fake_client.initiate_auth.return_value = {
+        "AuthenticationResult": {
+            "IdToken": fake_id_token,
+            "RefreshToken": "new-refresh",
+            "ExpiresIn": 3600,
+        }
+    }
+    monkeypatch.setattr(auth, "_cognito_client", lambda: fake_client)
+
+    auth.login("a@x.com", "password")
+
+    reloaded = token_store.read()
+    assert reloaded.is_revoked("user-a") is False
+    assert reloaded.get("user-a").id_token == fake_id_token
+
+
 # ---------- legacy migration ------------------------------------------------
 
 def test_legacy_tokens_json_deleted_on_first_read(tmp_deckd):
