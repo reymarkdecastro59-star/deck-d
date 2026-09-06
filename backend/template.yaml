@@ -116,6 +116,40 @@ Resources:
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
+      # ---------------------------------------------------------------------------
+      # Stage-level throttling (first line of defence against abuse/DoS).
+      #
+      # These limits apply to the entire API stage, not per-user. The wildcard
+      # entry (/*  *) sets a baseline for all endpoints; the /export GET entry
+      # tightens the limit for the full-dump endpoint, which is the highest abuse
+      # surface.
+      #
+      # Ordering matters: API Gateway evaluates the most specific path first, so
+      # /export GET (rate 5 / burst 10) takes precedence over the wildcard
+      # (rate 60 / burst 100).
+      #
+      # TODO(rate-limits): Per-user throttling is a follow-up task.
+      # API Gateway Usage Plans + API Keys do not integrate natively with Cognito
+      # JWT authorizers. The recommended path forward is one of:
+      #   a) AWS WAF rate-based rules keyed on the "sub" claim (forwarded as a
+      #      request header by the Cognito authorizer context).
+      #   b) A thin DynamoDB-backed counter in a Lambda middleware / decorator
+      #      that rejects requests exceeding per-sub limits before business logic
+      #      runs.
+      # Either approach should be implemented before the public beta launch.
+      # ---------------------------------------------------------------------------
+      MethodSettings:
+        # Heavy endpoint: full data dump — tight throttle to limit scraping / DoS
+        - HttpMethod: GET
+          ResourcePath: /export
+          ThrottlingRateLimit: 5
+          ThrottlingBurstLimit: 10
+        # All other endpoints: accommodates offline queue drain bursts while
+        # protecting against runaway clients
+        - HttpMethod: '*'
+          ResourcePath: '/*'
+          ThrottlingRateLimit: 60
+          ThrottlingBurstLimit: 100
 
   # -- Lambda Functions --------------------------------------------------------
 
