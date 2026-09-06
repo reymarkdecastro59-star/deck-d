@@ -4,7 +4,15 @@ import logging
 import os
 import time
 import pytest
+from botocore.exceptions import ClientError
 from unittest.mock import MagicMock, patch
+
+# USER_POOL_ID must be present before handlers.profile is imported because the
+# module reads it at load time (Blocker 3 fix).  Set a sentinel value here so
+# tests that exercise the happy path work; individual tests that need the var
+# absent use importlib.reload() inside their own scope.
+os.environ.setdefault("USER_POOL_ID", "us-east-1_TESTPOOL")
+
 import shared.db as db_module
 from shared.models import Session, Device
 from handlers.profile import handler
@@ -259,3 +267,80 @@ def test_delete_profile_audit_log_hashes_user_id(mock_boto_client, ddb_table, ca
         f"Expected user_id_hash={expected_hash!r} on log record, "
         f"got {getattr(audit_record, 'user_id_hash', 'MISSING')!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# New tests for Blockers 1 / 2 / 3
+# ---------------------------------------------------------------------------
+
+def _make_client_error(code: str) -> ClientError:
+    """Build a ClientError with the given Error.Code."""
+    return ClientError(
+        error_response={"Error": {"Code": code, "Message": code}},
+        operation_name="AdminDeleteUser",
+    )
+
+
+@patch("handlers.profile.boto3.client")
+def test_delete_profile_returns_500_on_cognito_client_error(
+    mock_boto_client, ddb_table, caplog
+):
+    """Blocker 1: ClientError that is NOT UserNotFoundException => 500 + audit log."""
+    mock_cognito = MagicMock()
+    mock_cognito.admin_delete_user.side_effect = _make_client_error(
+        "TooManyRequestsException"
+    )
+    mock_boto_client.return_value = mock_cognito
+
+    _seed_profile()
+
+    with caplog.at_level(logging.ERROR, logger="deckd-profile"):
+        resp = handler(_make_delete_event(), FakeLambdaContext())
+
+    assert resp["statusCode"] == 500
+    body = json.loads(resp["body"])
+    assert body["error"] == "erasure_partial"
+
+    # Structured audit event must be present.
+    partial_records = [r for r in caplog.records if r.getMessage() == "erasure_partial"]
+    assert partial_records, "erasure_partial log record not found in caplog"
+    audit = partial_records[0]
+    assert getattr(audit, "event", None) == "erasure_partial"
+
+
+@patch("handlers.profile.boto3.client")
+def test_delete_profile_still_204_on_cognito_user_not_found(
+    mock_boto_client, ddb_table
+):
+    """Blocker 2: ClientError with UserNotFoundException is idempotent => still 204."""
+    mock_cognito = MagicMock()
+    mock_cognito.admin_delete_user.side_effect = _make_client_error(
+        "UserNotFoundException"
+    )
+    mock_boto_client.return_value = mock_cognito
+
+    _seed_profile()
+
+    resp = handler(_make_delete_event(), FakeLambdaContext())
+    assert resp["statusCode"] == 204
+
+
+def test_delete_profile_returns_500_when_user_pool_id_missing(ddb_table):
+    """Blocker 3: Missing USER_POOL_ID must cause a cold-start KeyError caught by the
+    outer handler, returning 500 with a generic internal server error rather than
+    silently skipping Cognito deletion."""
+    original = os.environ.pop("USER_POOL_ID", None)
+    try:
+        import importlib
+        import handlers.profile as profile_module
+
+        # Reload so the module-level assignment re-runs without the env var.
+        with pytest.raises(KeyError):
+            importlib.reload(profile_module)
+    finally:
+        # Restore env var and reload to a working state for subsequent tests.
+        if original is not None:
+            os.environ["USER_POOL_ID"] = original
+        import importlib
+        import handlers.profile as profile_module
+        importlib.reload(profile_module)

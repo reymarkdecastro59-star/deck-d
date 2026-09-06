@@ -1,7 +1,8 @@
-﻿import hashlib
+import hashlib
 import json
 import os
 import boto3
+from botocore.exceptions import ClientError
 from aws_lambda_powertools import Logger
 from pydantic import ValidationError
 from shared.auth import get_user_id
@@ -10,6 +11,10 @@ from shared.db import get_profile, update_profile, delete_all_user_items
 from shared.schemas import ProfilePatch
 
 logger = Logger(service="deckd-profile")
+
+# Blocker 3: fail loudly at cold-start if the env var is absent so a
+# mis-configured Lambda never silently skips Cognito deletion.
+USER_POOL_ID = os.environ["USER_POOL_ID"]
 
 
 @logger.inject_lambda_context(correlation_id_path="requestContext.requestId")
@@ -58,21 +63,42 @@ def _patch_profile(event: dict) -> dict:
 
 def _delete_profile(event: dict) -> dict:
     user_id = get_user_id(event)
+    user_id_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
 
     # 1. Hard-delete all DynamoDB items for this user.
     items_deleted = delete_all_user_items(user_id)
 
     # 2. Remove the Cognito user — idempotent (UserNotFoundException => still 204).
-    user_pool_id = os.environ.get("USER_POOL_ID", "")
-    if user_pool_id:
-        cognito = boto3.client("cognito-idp")
-        try:
-            cognito.admin_delete_user(UserPoolId=user_pool_id, Username=user_id)
-        except cognito.exceptions.UserNotFoundException:
-            pass  # already deleted — idempotent
+    #    Blocker 1 + 2: use ClientError with Code inspection so the catch is stable
+    #    across botocore versions. Any error other than UserNotFoundException means
+    #    the Cognito account is still live — we must return 500 and signal retry.
+    cognito = boto3.client("cognito-idp")
+    try:
+        cognito.admin_delete_user(UserPoolId=USER_POOL_ID, Username=user_id)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code == "UserNotFoundException":
+            pass  # already deleted — idempotent, continue to 204
+        else:
+            logger.error(
+                "erasure_partial",
+                event="erasure_partial",
+                ddb_deleted=items_deleted,
+                cognito_error=code,
+                user_id_hash=user_id_hash,
+            )
+            return _resp(
+                500,
+                {
+                    "error": "erasure_partial",
+                    "message": (
+                        "Data deleted but Cognito account still exists"
+                        " — retry required"
+                    ),
+                },
+            )
 
     # 3. Audit log — hash the user_id so no raw PII lands in CloudWatch.
-    user_id_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
     logger.info(
         "account_erased",
         user_id_hash=user_id_hash,
