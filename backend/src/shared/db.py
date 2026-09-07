@@ -287,6 +287,48 @@ def revoke_device(user_id: str, device_id: str) -> Optional[Device]:
 # ---------------------------------------------------------------------------
 
 
+def delete_all_user_items(user_id: str) -> int:
+    """
+    Enumerate and hard-delete every item whose PK is USER#<user_id>.
+
+    Queries all items for the user partition, then deletes each one via the
+    high-level Table resource (batch_writer handles grouping internally and
+    botocore retries any transient throttle automatically).  Returns total count
+    of items deleted.  Idempotent — safe to call on an already-erased user
+    (returns 0).
+    """
+    table = get_table()
+
+    # Collect all (pk, sk) pairs for this user via paginated Query.
+    # ProjectionExpression restricts attributes to just pk/sk so a user with
+    # thousands of sessions doesn't pull every attribute into Lambda memory.
+    keys: list[dict] = []
+    kwargs: dict = {
+        "KeyConditionExpression": Key("pk").eq(f"USER#{user_id}"),
+        "ProjectionExpression": "pk, sk",
+    }
+    while True:
+        resp = table.query(**kwargs)
+        for item in resp.get("Items", []):
+            keys.append({"pk": item["pk"], "sk": item["sk"]})
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+
+    if not keys:
+        return 0
+
+    # batch_writer buffers deletes in groups of 25 and handles UnprocessedItems
+    # with automatic back-off — matches the BatchWriteItem contract without
+    # requiring a raw low-level client call.
+    with table.batch_writer() as batch:
+        for key in keys:
+            batch.delete_item(Key=key)
+
+    return len(keys)
+
+
 def get_or_create_profile(user_id: str, email: str) -> UserProfile:
     table = get_table()
     resp = table.get_item(Key={"pk": f"USER#{user_id}", "sk": "PROFILE"})

@@ -267,6 +267,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DeckdTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminDeleteUser
+              Resource: !GetAtt UserPool.Arn
       Events:
         GetProfile:
           Type: Api
@@ -280,6 +285,12 @@ Resources:
             RestApiId: !Ref Api
             Path: /profile
             Method: PATCH
+        DeleteProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /profile
+            Method: DELETE
 
   RefreshMetadataFunction:
     Type: AWS::Serverless::Function
