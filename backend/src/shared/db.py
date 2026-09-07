@@ -253,9 +253,12 @@ def delete_all_user_items(user_id: str) -> int:
     table = get_table()
 
     # Collect all (pk, sk) pairs for this user via paginated Query.
+    # ProjectionExpression restricts attributes to just pk/sk so a user with
+    # thousands of sessions doesn't pull every attribute into Lambda memory.
     keys: list[dict] = []
     kwargs: dict = {
         "KeyConditionExpression": Key("pk").eq(f"USER#{user_id}"),
+        "ProjectionExpression": "pk, sk",
     }
     while True:
         resp = table.query(**kwargs)

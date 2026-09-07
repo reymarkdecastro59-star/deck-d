@@ -325,6 +325,96 @@ def test_delete_profile_still_204_on_cognito_user_not_found(
     assert resp["statusCode"] == 204
 
 
+@patch("handlers.profile.boto3.client")
+def test_delete_profile_paginated_wipe_covers_all_pages(mock_boto_client, ddb_table):
+    """Pagination invariant: users with more items than one DDB Query page
+    (LastEvaluatedKey returned) must have all pages deleted, not just the first.
+    Simulate by stubbing the table.query method to return two pages before
+    signalling end-of-pagination."""
+    mock_boto_client.return_value = _mock_cognito_client()
+    _seed_profile()
+
+    real_table = db_module.get_table()
+    real_query = real_table.query
+    call_log = {"count": 0, "keys_returned": []}
+
+    def paginated_query(**kwargs):
+        call_log["count"] += 1
+        # First call: return a fake page with a LastEvaluatedKey pointing at
+        # the second (real) page. Subsequent calls: pass through to the real
+        # table so items actually get removed.
+        if call_log["count"] == 1:
+            fake_page_1 = [
+                {"pk": f"USER#{USER_ID}", "sk": f"PAGE1#{i}"} for i in range(3)
+            ]
+            call_log["keys_returned"].extend(fake_page_1)
+            return {
+                "Items": fake_page_1,
+                "LastEvaluatedKey": {"pk": f"USER#{USER_ID}", "sk": "PAGE1#2"},
+            }
+        return real_query(**kwargs)
+
+    real_table.query = paginated_query
+    try:
+        resp = handler(_make_delete_event(), FakeLambdaContext())
+    finally:
+        real_table.query = real_query
+
+    assert resp["statusCode"] == 204
+    # Two Query invocations proves pagination loop ran twice.
+    assert call_log["count"] >= 2, (
+        f"Expected >= 2 Query calls (paginated), got {call_log['count']}"
+    )
+    # Profile item was included in page 2 (real query) — must be gone now.
+    assert db_module.get_profile(USER_ID) is None
+
+
+@patch("handlers.profile.boto3.client")
+def test_delete_profile_ddb_failure_prevents_cognito_call(
+    mock_boto_client, ddb_table
+):
+    """DDB-first invariant: if delete_all_user_items raises, Cognito must
+    never be called. Prevents the reverse-order "stranded data" failure mode
+    where Cognito is deleted but DDB wipe fails, leaving the user unable to
+    authenticate and retry."""
+    mock_cognito = _mock_cognito_client()
+    mock_boto_client.return_value = mock_cognito
+    _seed_profile()
+
+    with patch(
+        "handlers.profile.delete_all_user_items",
+        side_effect=RuntimeError("simulated DDB outage"),
+    ):
+        resp = handler(_make_delete_event(), FakeLambdaContext())
+
+    # Outer handler catches the RuntimeError → 500 generic error.
+    assert resp["statusCode"] == 500
+    # Critically: Cognito was NEVER touched.
+    mock_cognito.admin_delete_user.assert_not_called()
+    # User can still authenticate and retry — profile is still in DDB.
+    assert db_module.get_profile(USER_ID) is not None
+
+
+@patch("handlers.profile.boto3.client")
+def test_delete_profile_logs_initiation_before_destruction(
+    mock_boto_client, ddb_table, caplog
+):
+    """Compliance: an 'account_erasure_initiated' log must fire before any
+    destructive call, so a mid-erasure crash still leaves an audit trail."""
+    mock_boto_client.return_value = _mock_cognito_client()
+    _seed_profile()
+
+    with caplog.at_level(logging.INFO, logger="deckd-profile"):
+        resp = handler(_make_delete_event(), FakeLambdaContext())
+
+    assert resp["statusCode"] == 204
+    messages = [r.getMessage() for r in caplog.records]
+    assert "account_erasure_initiated" in messages
+    assert "account_erased" in messages
+    # Initiation must precede completion in log order.
+    assert messages.index("account_erasure_initiated") < messages.index("account_erased")
+
+
 def test_delete_profile_returns_500_when_user_pool_id_missing(ddb_table):
     """Blocker 3: Missing USER_POOL_ID must cause a cold-start KeyError caught by the
     outer handler, returning 500 with a generic internal server error rather than

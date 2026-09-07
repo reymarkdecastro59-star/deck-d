@@ -65,7 +65,16 @@ def _delete_profile(event: dict) -> dict:
     user_id = get_user_id(event)
     user_id_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
 
+    # Pre-destruction audit record (GDPR / CCPA) — written before any state
+    # change so a mid-erasure crash still leaves an initiation trail.
+    logger.info("account_erasure_initiated", user_id_hash=user_id_hash)
+
     # 1. Hard-delete all DynamoDB items for this user.
+    #
+    # DDB-FIRST INVARIANT (do not flip): if DDB fails, Cognito is never called
+    # → user retains authentication → user can retry. Reversing this order
+    # ("Cognito first") introduces an unrecoverable state where the identity
+    # is gone but PII is stranded and the user cannot authenticate to retry.
     items_deleted = delete_all_user_items(user_id)
 
     # 2. Remove the Cognito user — idempotent (UserNotFoundException => still 204).
