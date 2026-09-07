@@ -24,6 +24,14 @@ Parameters:
     NoEcho: true
     Default: ""
 
+  BedrockInferenceProfileId:
+    Type: String
+    Default: apac.anthropic.claude-haiku-4-5-v1:0
+    Description: >
+      Bedrock cross-region inference profile ID for Claude Haiku 4.5.
+      The Lambda constructs the full ARN at cold start from its own
+      invoked_function_arn — this parameter only supplies the ID suffix.
+
 Resources:
 
   # -- Auth --------------------------------------------------------------------
@@ -302,11 +310,24 @@ Resources:
       Environment:
         Variables:
           RAWG_API_KEY: !Ref RawgApiKey
-      # Crud (not Read) because Phase 8b writes a per-user genre cache item
-      # (pk=USER#{sub}, sk=RECS#GENRE) on the compute path.
+          BEDROCK_INFERENCE_PROFILE_ID: !Ref BedrockInferenceProfileId
+      # Crud (not Read) because Phases 8b and 8c write per-user cache items
+      # (pk=USER#{sub}, sk=RECS#GENRE and RECS#LLM).
+      #
+      # Bedrock statement: bedrock:InvokeModel only (never bedrock:*), scoped
+      # to the Haiku 4.5 model family AND its cross-region inference profile —
+      # Bedrock verifies both on invoke. Wildcarded on the version suffix so a
+      # Haiku patch upgrade doesn't force a redeploy; the model family stays
+      # pinned.
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DeckdTable
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-haiku-4-5-*
+                - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/apac.anthropic.claude-haiku-4-5-*
       Events:
         GetRecommendations:
           Type: Api

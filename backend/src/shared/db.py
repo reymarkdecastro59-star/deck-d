@@ -40,6 +40,7 @@ def put_trending_daily(games: list, updated_at: str, ttl: int) -> None:
 # ---------------------------------------------------------------------------
 
 _RECS_GENRE_SK = "RECS#GENRE"
+_RECS_LLM_SK = "RECS#LLM"
 
 
 def get_recs_genre(user_id: str) -> Optional[dict]:
@@ -66,6 +67,30 @@ def put_recs_genre(user_id: str, games: list, ttl: int) -> None:
             "pk": f"USER#{user_id}",
             "sk": _RECS_GENRE_SK,
             "games": games,
+            "ttl": ttl,
+        }
+    )
+
+
+def get_recs_llm(user_id: str) -> Optional[dict]:
+    """Return the raw RECS#LLM cache item or None if it has never been written.
+
+    Unlike get_recs_genre we do NOT filter by TTL here — the caller distinguishes
+    fresh vs stale because the Tier 3 policy is "serve stale on Bedrock failure",
+    which needs to see expired entries.
+    """
+    resp = get_table().get_item(Key={"pk": f"USER#{user_id}", "sk": _RECS_LLM_SK})
+    return resp.get("Item")
+
+
+def put_recs_llm(user_id: str, picks: list, generated_at: int, ttl: int) -> None:
+    """Cache the per-user LLM top-picks with generation timestamp and TTL."""
+    get_table().put_item(
+        Item={
+            "pk": f"USER#{user_id}",
+            "sk": _RECS_LLM_SK,
+            "picks": picks,
+            "generated_at": generated_at,
             "ttl": ttl,
         }
     )

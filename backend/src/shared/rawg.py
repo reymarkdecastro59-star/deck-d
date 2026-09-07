@@ -173,6 +173,60 @@ def fetch_metadata(exe_lower: str) -> dict:
     return _parse_detail(exe_lower, top, detail_resp.json(), fetched_at)
 
 
+def _search_confident_match(query: str, result: dict) -> bool:
+    """String-similarity check for LLM-name → RAWG-result matching."""
+    a = _normalize(query)
+    b = _normalize(result.get("name", ""))
+    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.60
+
+
+def search_game_by_name(name: str, retries: int = 2, backoff_sec: float = 0.25) -> Optional[dict]:
+    """Look up a game name (typically from an LLM suggestion) via RAWG.
+
+    Returns a trimmed dict on a confident match, None on any failure —
+    network error, non-2xx, empty results, or low-confidence match.
+
+    Retries transient network errors up to `retries` times with linear
+    backoff so a single blip during Tier 3 validation doesn't falsely
+    reject a valid LLM pick and hide the tier.
+    """
+    if not name or not name.strip():
+        return None
+    params = {"search": name.strip(), "page_size": 5, "key": _api_key()}
+    resp = None
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.get(f"{_RAWG_BASE}/games", params=params, timeout=10)
+            break
+        except requests.RequestException as exc:
+            if attempt == retries:
+                logger.warning("rawg_search_name_error name=%s err=%s", name, exc)
+                return None
+            time.sleep(backoff_sec * (attempt + 1))
+    if resp is None or not resp.ok:
+        if resp is not None:
+            logger.warning("rawg_search_name_non_ok name=%s status=%s", name, resp.status_code)
+        return None
+    results = resp.json().get("results") or []
+    if not results:
+        return None
+    top = results[0]
+    if not _search_confident_match(name, top):
+        return None
+    raw_rating = top.get("rating")
+    rating = Decimal(str(raw_rating)) if raw_rating is not None else None
+    return {
+        "rawg_id": top.get("id"),
+        "name": top.get("name"),
+        "slug": top.get("slug"),
+        "background_image": top.get("background_image"),
+        "genres": [g["name"] for g in (top.get("genres") or [])],
+        "metacritic": top.get("metacritic"),
+        "released": top.get("released"),
+        "rating": rating,
+    }
+
+
 def _genre_to_slug(name: str) -> str:
     """Map a RAWG genre display name to its /games?genres= slug."""
     key = name.lower().strip()
