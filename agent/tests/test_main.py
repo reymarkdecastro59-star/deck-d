@@ -1,0 +1,213 @@
+"""
+Tests for the tray-menu builder and tooltip. Verifies structure only — actual
+pystray/tkinter/winotify calls are mocked or not exercised.
+"""
+import pytest
+
+import main
+import token_store
+
+
+def _seed(accounts, active_user_id=None, revoked=()):
+    store = token_store.TokenStore()
+    for uid, email in accounts:
+        store.upsert(token_store.Account(
+            user_id=uid, email=email, id_token="t", refresh_token="r",
+            expires_at=1_700_000_000,
+        ))
+    if active_user_id:
+        store.set_active(active_user_id)
+    for uid in revoked:
+        store.mark_revoked(uid)
+    token_store.write(store)
+    return store
+
+
+# ---------- tooltip ---------------------------------------------------------
+
+def test_tooltip_when_not_signed_in(tmp_deckd):
+    _seed([])
+    assert main._tooltip_for(token_store.read()) == "DECK'D — Not signed in"
+
+
+def test_tooltip_when_no_active_but_accounts_exist(tmp_deckd):
+    _seed([("u", "u@x.com")], active_user_id=None)
+    assert main._tooltip_for(token_store.read()) == "DECK'D — No active account"
+
+
+def test_tooltip_when_active_healthy(tmp_deckd):
+    _seed([("u", "u@x.com")], active_user_id="u")
+    assert main._tooltip_for(token_store.read()) == "DECK'D — Tracking as u@x.com"
+
+
+def test_tooltip_when_active_revoked_says_no_active(tmp_deckd):
+    """A revoked active account is not 'active' for tooltip purposes."""
+    _seed([("u", "u@x.com")], active_user_id="u", revoked=("u",))
+    assert main._tooltip_for(token_store.read()) == "DECK'D — No active account"
+
+
+# ---------- menu structure --------------------------------------------------
+
+def _labels(items):
+    """Extract the .text attribute of each MenuItem, skipping separators."""
+    return [i.text for i in items if getattr(i, "text", None) is not None]
+
+
+def test_menu_zero_accounts_has_no_switch_no_logout_no_retry(tmp_deckd):
+    _seed([])
+    labels = _labels(main._build_menu())
+    assert "Switch account" not in labels
+    assert "Log out this account" not in labels
+    assert "Retry sync" not in labels
+    assert "Add account…" in labels
+    assert "Quit" in labels
+
+
+def test_menu_one_account_active_has_switch_and_logout_no_retry(tmp_deckd):
+    _seed([("u", "u@x.com")], active_user_id="u")
+    labels = _labels(main._build_menu())
+    assert "Switch account" in labels
+    assert "Log out this account" in labels
+    assert "Retry sync" not in labels
+
+
+def test_menu_shows_retry_sync_when_any_revoked(tmp_deckd):
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1", revoked=("u2",))
+    labels = _labels(main._build_menu())
+    assert "Retry sync" in labels
+
+
+def test_switch_submenu_labels_revoked_accounts(tmp_deckd):
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1", revoked=("u2",))
+    menu = main._build_menu()
+    switch_item = next(i for i in menu if getattr(i, "text", None) == "Switch account")
+    sub_labels = [i.text for i in switch_item.submenu.items]
+    assert "a@x.com" in sub_labels
+    assert "b@x.com (revoked)" in sub_labels
+
+
+def test_switch_submenu_disables_revoked_accounts(tmp_deckd):
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1", revoked=("u2",))
+    menu = main._build_menu()
+    switch_item = next(i for i in menu if getattr(i, "text", None) == "Switch account")
+    for sub in switch_item.submenu.items:
+        if sub.text == "b@x.com (revoked)":
+            assert sub.enabled is False or callable(sub.enabled) and sub.enabled(sub) is False
+        if sub.text == "a@x.com":
+            assert sub.enabled is True or callable(sub.enabled) and sub.enabled(sub) is True
+
+
+# ---------- switch handler (Gap B) ------------------------------------------
+
+def test_switch_click_same_user_is_noop(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", MagicMock())
+
+    main._on_switch_click("u1")
+    switched.assert_not_called()
+
+
+def test_switch_click_no_games_switches_immediately(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    reset = MagicMock()
+    refresh = MagicMock()
+    dialog = MagicMock()
+
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", reset)
+    monkeypatch.setattr(main, "_refresh_tray", refresh)
+    monkeypatch.setattr(main, "_confirm_switch_dialog", dialog)
+    monkeypatch.setattr(main.watcher, "list_open_sessions", lambda: [])
+
+    main._on_switch_click("u2")
+
+    dialog.assert_not_called()
+    switched.assert_called_once_with("u2")
+    reset.assert_called_once()
+    refresh.assert_called_once()
+
+
+def test_switch_click_with_open_game_and_confirm_switches(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", MagicMock())
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+    monkeypatch.setattr(main, "_confirm_switch_dialog", lambda games: True)
+    monkeypatch.setattr(main.watcher, "list_open_sessions",
+                        lambda: [("game.exe", "Cool Game")])
+
+    main._on_switch_click("u2")
+    switched.assert_called_once_with("u2")
+
+
+def test_switch_click_with_open_game_and_cancel_does_not_switch(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1")
+
+    switched = MagicMock()
+    reset = MagicMock()
+    monkeypatch.setattr(main, "auth", type("A", (), {"switch_account": switched})())
+    monkeypatch.setattr(main.notifications, "reset_session_dedup", reset)
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+    monkeypatch.setattr(main, "_confirm_switch_dialog", lambda games: False)
+    monkeypatch.setattr(main.watcher, "list_open_sessions",
+                        lambda: [("game.exe", "Cool Game")])
+
+    main._on_switch_click("u2")
+
+    switched.assert_not_called()
+    reset.assert_not_called()
+
+
+# ---------- retry sync / add / logout handlers ------------------------------
+
+def test_on_retry_sync_clears_all_revoked_and_triggers_sync(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com"), ("u2", "b@x.com")], active_user_id="u1",
+          revoked=("u1", "u2"))
+
+    sync_mock = MagicMock(return_value=(2, 0))
+    monkeypatch.setattr(main.sync, "sync_sessions", sync_mock)
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+
+    main._on_retry_sync(MagicMock(), MagicMock())
+
+    reloaded = token_store.read()
+    assert reloaded.is_revoked("u1") is False
+    assert reloaded.is_revoked("u2") is False
+    sync_mock.assert_called_once()
+
+
+def test_on_logout_removes_active_account(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([("u1", "a@x.com")], active_user_id="u1")
+
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+    main._on_logout(MagicMock(), MagicMock())
+
+    reloaded = token_store.read()
+    assert reloaded.accounts == []
+
+
+def test_on_add_account_spawns_login_subprocess(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    _seed([])
+    popen = MagicMock()
+    monkeypatch.setattr(main.subprocess, "Popen", popen)
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+
+    main._on_add_account(MagicMock(), MagicMock())
+
+    popen.assert_called_once()
+    args = popen.call_args.args[0]
+    assert any("login.py" in str(a) for a in args)

@@ -32,6 +32,16 @@ def decay_sec(sessions: list[Session], now: int) -> float:
     return sum(decay_sec_by_game(sessions, now).values(), start=0.0)
 
 
+def decay_sec_from_intervals(intervals: list[tuple[int, int]], now: int) -> float:
+    """Decay sum for a pre-grouped interval list. Callers doing their own
+    canonical grouping (Phase 7's `canonical_key`) go through this so the
+    grouping key stays out of decay.py."""
+    merged = merge_intervals(intervals)
+    return sum(
+        (end - start) * weight(now - start) for start, end in merged
+    )
+
+
 def decay_sec_by_game(sessions: list[Session], now: int) -> dict[str, float]:
     """Decay-weighted seconds per game, computed on the union of intervals.
 
@@ -47,11 +57,7 @@ def decay_sec_by_game(sessions: list[Session], now: int) -> dict[str, float]:
     intervals_by_game: dict[str, list[tuple[int, int]]] = defaultdict(list)
     for s in sessions:
         intervals_by_game[s.game_name].append((s.started_at, s.ended_at))
-
-    totals: dict[str, float] = {}
-    for game, ivs in intervals_by_game.items():
-        merged = merge_intervals(ivs)
-        totals[game] = sum(
-            (end - start) * weight(now - start) for start, end in merged
-        )
-    return totals
+    return {
+        game: decay_sec_from_intervals(ivs, now)
+        for game, ivs in intervals_by_game.items()
+    }

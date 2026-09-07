@@ -25,6 +25,7 @@ import base64
 import json
 import os
 import sys
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Optional
@@ -75,6 +76,7 @@ class Account:
     id_token: str
     refresh_token: str
     expires_at: int  # epoch seconds; caller should refresh a few minutes early
+    revoked_at: Optional[int] = None  # Phase 6: additive; epoch seconds when the backend revoked this device
 
     def to_dict(self) -> dict:
         return {
@@ -83,6 +85,7 @@ class Account:
             "id_token": self.id_token,
             "refresh_token": self.refresh_token,
             "expires_at": self.expires_at,
+            "revoked_at": self.revoked_at,
         }
 
     @classmethod
@@ -93,6 +96,7 @@ class Account:
             id_token=d["id_token"],
             refresh_token=d["refresh_token"],
             expires_at=int(d["expires_at"]),
+            revoked_at=d.get("revoked_at"),  # .get for backwards compat with pre-Phase-6 files
         )
 
 
@@ -132,6 +136,30 @@ class TokenStore:
         if self.get(user_id) is None:
             raise TokenStoreError(f"cannot set active: user_id {user_id!r} not in store")
         self.active_user_id = user_id
+
+    # -------- revocation state (Phase 6) --------
+
+    def mark_revoked(self, user_id: str) -> None:
+        acct = self.get(user_id)
+        if acct is None:
+            raise TokenStoreError(f"cannot mark revoked: user_id {user_id!r} not in store")
+        acct.revoked_at = int(time.time())
+
+    def clear_revoked(self, user_id: str) -> None:
+        acct = self.get(user_id)
+        if acct is not None:
+            acct.revoked_at = None
+
+    def is_revoked(self, user_id: str) -> bool:
+        acct = self.get(user_id)
+        return acct is not None and acct.revoked_at is not None
+
+    def active_healthy(self) -> Optional[Account]:
+        """active() but returns None if the active account is revoked."""
+        acct = self.active()
+        if acct is None or acct.revoked_at is not None:
+            return None
+        return acct
 
     # -------- serialization --------
 

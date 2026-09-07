@@ -70,6 +70,13 @@ def login(email: str, password: str) -> dict:
     store.upsert(account)
     store.set_active(user_id)
     token_store.write(store)
+    # Clear any Phase-5 auth_failed / backoff flag so sync starts fresh.
+    # Import here to avoid circular-import risk at module load time.
+    try:
+        import session
+        session.clear_auth_failed(user_id)
+    except Exception:
+        pass  # non-fatal: session module missing during setup
     return {"user_id": user_id, "email": canonical_email, "expires_at": account.expires_at}
 
 

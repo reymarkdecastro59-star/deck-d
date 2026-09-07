@@ -24,6 +24,14 @@ Parameters:
     NoEcho: true
     Default: ""
 
+  BedrockInferenceProfileId:
+    Type: String
+    Default: apac.anthropic.claude-haiku-4-5-v1:0
+    Description: >
+      Bedrock cross-region inference profile ID for Claude Haiku 4.5.
+      The Lambda constructs the full ARN at cold start from its own
+      invoked_function_arn — this parameter only supplies the ID suffix.
+
 Resources:
 
   # -- Auth --------------------------------------------------------------------
@@ -116,6 +124,40 @@ Resources:
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
+      # ---------------------------------------------------------------------------
+      # Stage-level throttling (first line of defence against abuse/DoS).
+      #
+      # These limits apply to the entire API stage, not per-user. The wildcard
+      # entry (/*  *) sets a baseline for all endpoints; the /export GET entry
+      # tightens the limit for the full-dump endpoint, which is the highest abuse
+      # surface.
+      #
+      # Ordering matters: API Gateway evaluates the most specific path first, so
+      # /export GET (rate 5 / burst 10) takes precedence over the wildcard
+      # (rate 60 / burst 100).
+      #
+      # TODO(rate-limits): Per-user throttling is a follow-up task.
+      # API Gateway Usage Plans + API Keys do not integrate natively with Cognito
+      # JWT authorizers. The recommended path forward is one of:
+      #   a) AWS WAF rate-based rules keyed on the "sub" claim (forwarded as a
+      #      request header by the Cognito authorizer context).
+      #   b) A thin DynamoDB-backed counter in a Lambda middleware / decorator
+      #      that rejects requests exceeding per-sub limits before business logic
+      #      runs.
+      # Either approach should be implemented before the public beta launch.
+      # ---------------------------------------------------------------------------
+      MethodSettings:
+        # Heavy endpoint: full data dump — tight throttle to limit scraping / DoS
+        - HttpMethod: GET
+          ResourcePath: /export
+          ThrottlingRateLimit: 5
+          ThrottlingBurstLimit: 10
+        # All other endpoints: accommodates offline queue drain bursts while
+        # protecting against runaway clients
+        - HttpMethod: '*'
+          ResourcePath: '/*'
+          ThrottlingRateLimit: 60
+          ThrottlingBurstLimit: 100
 
   # -- Lambda Functions --------------------------------------------------------
 
@@ -233,6 +275,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DeckdTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminDeleteUser
+              Resource: !GetAtt UserPool.Arn
       Events:
         GetProfile:
           Type: Api
@@ -246,6 +293,52 @@ Resources:
             RestApiId: !Ref Api
             Path: /profile
             Method: PATCH
+        DeleteProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /profile
+            Method: DELETE
+
+  RecommendationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-recommendations-${Stage}
+      CodeUri: src/
+      Handler: handlers.recommendations.handler
+      Timeout: 15
+      Environment:
+        Variables:
+          RAWG_API_KEY: !Ref RawgApiKey
+          BEDROCK_INFERENCE_PROFILE_ID: !Ref BedrockInferenceProfileId
+      # Crud (not Read) because Phases 8b and 8c write per-user cache items
+      # (pk=USER#{sub}, sk=RECS#GENRE and RECS#LLM).
+      #
+      # Bedrock statement: bedrock:InvokeModel only (never bedrock:*), scoped
+      # to the Haiku 4.5 model family AND its cross-region inference profile —
+      # Bedrock verifies both on invoke. Wildcarded on the version suffix so a
+      # Haiku patch upgrade doesn't force a redeploy; the model family stays
+      # pinned.
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                # Foundation model ARN has NO account segment (Bedrock-managed,
+                # not customer-owned) — the double colon is intentional, not
+                # a typo. Both resources are verified by Bedrock on invoke,
+                # so we grant both.
+                - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-haiku-4-5-*
+                - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/apac.anthropic.claude-haiku-4-5-*
+      Events:
+        GetRecommendations:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /recommendations
+            Method: GET
 
   RefreshMetadataFunction:
     Type: AWS::Serverless::Function

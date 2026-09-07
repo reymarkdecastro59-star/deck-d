@@ -1,9 +1,100 @@
-﻿import os
+﻿import logging
+import os
 import time
 from typing import Optional
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from .models import Session, UserProfile, Device
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Trending cache  (PK=TRENDING#DAILY, SK=METADATA)
+# ---------------------------------------------------------------------------
+
+_TRENDING_PK = "TRENDING#DAILY"
+_TRENDING_SK = "METADATA"
+
+
+def get_trending_daily() -> Optional[dict]:
+    """Return the trending cache item, or None if it has never been written."""
+    resp = get_table().get_item(Key={"pk": _TRENDING_PK, "sk": _TRENDING_SK})
+    return resp.get("Item")
+
+
+def put_trending_daily(games: list, updated_at: str, ttl: int) -> None:
+    """Write (or overwrite) the daily trending cache item."""
+    get_table().put_item(
+        Item={
+            "pk": _TRENDING_PK,
+            "sk": _TRENDING_SK,
+            "games": games,
+            "updated_at": updated_at,
+            "ttl": ttl,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Per-user recommendations cache  (SK=RECS#*)
+# ---------------------------------------------------------------------------
+
+_RECS_GENRE_SK = "RECS#GENRE"
+_RECS_LLM_SK = "RECS#LLM"
+
+
+def get_recs_genre(user_id: str) -> Optional[dict]:
+    """Return the cached genre-tier recs item, or None if absent or expired.
+
+    We honour the TTL attribute in-code because DynamoDB's TTL sweeper is
+    eventually consistent (up to 48h delay) and would otherwise serve stale
+    recs long after their intended lifetime.
+    """
+    resp = get_table().get_item(Key={"pk": f"USER#{user_id}", "sk": _RECS_GENRE_SK})
+    item = resp.get("Item")
+    if not item:
+        return None
+    ttl = item.get("ttl")
+    if ttl is not None and int(ttl) < int(time.time()):
+        return None
+    return item
+
+
+def put_recs_genre(user_id: str, games: list, ttl: int) -> None:
+    """Cache the per-user genre-tier recs list with an explicit TTL epoch second."""
+    get_table().put_item(
+        Item={
+            "pk": f"USER#{user_id}",
+            "sk": _RECS_GENRE_SK,
+            "games": games,
+            "ttl": ttl,
+        }
+    )
+
+
+def get_recs_llm(user_id: str) -> Optional[dict]:
+    """Return the raw RECS#LLM cache item or None if it has never been written.
+
+    Unlike get_recs_genre we do NOT filter by TTL here — the caller distinguishes
+    fresh vs stale because the Tier 3 policy is "serve stale on Bedrock failure",
+    which needs to see expired entries.
+    """
+    resp = get_table().get_item(Key={"pk": f"USER#{user_id}", "sk": _RECS_LLM_SK})
+    return resp.get("Item")
+
+
+def put_recs_llm(user_id: str, picks: list, generated_at: int, ttl: int) -> None:
+    """Cache the per-user LLM top-picks with generation timestamp and TTL."""
+    get_table().put_item(
+        Item={
+            "pk": f"USER#{user_id}",
+            "sk": _RECS_LLM_SK,
+            "picks": picks,
+            "generated_at": generated_at,
+            "ttl": ttl,
+        }
+    )
+
 
 # ---------------------------------------------------------------------------
 # Game metadata helpers
@@ -17,6 +108,42 @@ def put_game_metadata(metadata: dict) -> None:
 def get_game_metadata(exe_lower: str) -> Optional[dict]:
     resp = get_table().get_item(Key={"pk": f"GAME#{exe_lower}", "sk": "METADATA"})
     return resp.get("Item")
+
+
+def batch_get_game_metadata(exe_lowers: list[str]) -> dict[str, dict]:
+    """Bulk-fetch RAWG metadata items keyed by exe_lower.
+
+    DynamoDB batch_get_item takes at most 100 keys per call; chunks are
+    issued sequentially. UnprocessedKeys (rare, throttling-induced) are
+    dropped silently — the caller falls back to the exe/name grouping
+    for any exe whose metadata didn't come back.
+    """
+    if not exe_lowers:
+        return {}
+    # Go through the resource so items come back already deserialized
+    # from AttributeValue form (str/int/bool instead of {"S": "..."}).
+    table_name = os.environ["TABLE_NAME"]
+    resource = _get_resource()
+    out: dict[str, dict] = {}
+    for i in range(0, len(exe_lowers), 100):
+        chunk = exe_lowers[i:i + 100]
+        request = {
+            table_name: {
+                "Keys": [{"pk": f"GAME#{exe}", "sk": "METADATA"} for exe in chunk],
+            }
+        }
+        resp = resource.batch_get_item(RequestItems=request)
+        for item in resp.get("Responses", {}).get(table_name, []):
+            exe = item.get("game_exe")
+            if exe:
+                out[exe] = item
+        unprocessed = resp.get("UnprocessedKeys", {}).get(table_name, {}).get("Keys", [])
+        if unprocessed:
+            logger.warning(
+                "batch_get_game_metadata: %d key(s) unprocessed (throttling); falling back to exe-grouping for those",
+                len(unprocessed),
+            )
+    return out
 
 
 def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
@@ -68,14 +195,22 @@ def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[s
         kwargs["ExclusiveStartKey"] = last_key
     return seen
 
+_resource = None
 _table = None
+
+
+def _get_resource():
+    """Module-level DynamoDB resource singleton — reused across Lambda warm invocations."""
+    global _resource
+    if _resource is None:
+        _resource = boto3.resource("dynamodb")
+    return _resource
 
 
 def get_table():
     global _table
     if _table is None:
-        dynamodb = boto3.resource("dynamodb")
-        _table = dynamodb.Table(os.environ["TABLE_NAME"])
+        _table = _get_resource().Table(os.environ["TABLE_NAME"])
     return _table
 
 
@@ -238,6 +373,48 @@ def revoke_device(user_id: str, device_id: str) -> Optional[Device]:
 # ---------------------------------------------------------------------------
 # Profile
 # ---------------------------------------------------------------------------
+
+
+def delete_all_user_items(user_id: str) -> int:
+    """
+    Enumerate and hard-delete every item whose PK is USER#<user_id>.
+
+    Queries all items for the user partition, then deletes each one via the
+    high-level Table resource (batch_writer handles grouping internally and
+    botocore retries any transient throttle automatically).  Returns total count
+    of items deleted.  Idempotent — safe to call on an already-erased user
+    (returns 0).
+    """
+    table = get_table()
+
+    # Collect all (pk, sk) pairs for this user via paginated Query.
+    # ProjectionExpression restricts attributes to just pk/sk so a user with
+    # thousands of sessions doesn't pull every attribute into Lambda memory.
+    keys: list[dict] = []
+    kwargs: dict = {
+        "KeyConditionExpression": Key("pk").eq(f"USER#{user_id}"),
+        "ProjectionExpression": "pk, sk",
+    }
+    while True:
+        resp = table.query(**kwargs)
+        for item in resp.get("Items", []):
+            keys.append({"pk": item["pk"], "sk": item["sk"]})
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+
+    if not keys:
+        return 0
+
+    # batch_writer buffers deletes in groups of 25 and handles UnprocessedItems
+    # with automatic back-off — matches the BatchWriteItem contract without
+    # requiring a raw low-level client call.
+    with table.batch_writer() as batch:
+        for key in keys:
+            batch.delete_item(Key=key)
+
+    return len(keys)
 
 
 def get_or_create_profile(user_id: str, email: str) -> UserProfile:
