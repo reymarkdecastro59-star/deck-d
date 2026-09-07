@@ -292,6 +292,24 @@ Resources:
             Path: /profile
             Method: DELETE
 
+  RecommendationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-recommendations-${Stage}
+      CodeUri: src/
+      Handler: handlers.recommendations.handler
+      Timeout: 15
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetRecommendations:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /recommendations
+            Method: GET
+
   RefreshMetadataFunction:
     Type: AWS::Serverless::Function
     Properties:

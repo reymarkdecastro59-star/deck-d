@@ -9,6 +9,33 @@ from .models import Session, UserProfile, Device
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Trending cache  (PK=TRENDING#DAILY, SK=METADATA)
+# ---------------------------------------------------------------------------
+
+_TRENDING_PK = "TRENDING#DAILY"
+_TRENDING_SK = "METADATA"
+
+
+def get_trending_daily() -> Optional[dict]:
+    """Return the trending cache item, or None if it has never been written."""
+    resp = get_table().get_item(Key={"pk": _TRENDING_PK, "sk": _TRENDING_SK})
+    return resp.get("Item")
+
+
+def put_trending_daily(games: list, updated_at: str, ttl: int) -> None:
+    """Write (or overwrite) the daily trending cache item."""
+    get_table().put_item(
+        Item={
+            "pk": _TRENDING_PK,
+            "sk": _TRENDING_SK,
+            "games": games,
+            "updated_at": updated_at,
+            "ttl": ttl,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # Game metadata helpers
 # ---------------------------------------------------------------------------
 
