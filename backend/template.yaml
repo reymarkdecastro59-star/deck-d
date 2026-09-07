@@ -299,8 +299,13 @@ Resources:
       CodeUri: src/
       Handler: handlers.recommendations.handler
       Timeout: 15
+      Environment:
+        Variables:
+          RAWG_API_KEY: !Ref RawgApiKey
+      # Crud (not Read) because Phase 8b writes a per-user genre cache item
+      # (pk=USER#{sub}, sk=RECS#GENRE) on the compute path.
       Policies:
-        - DynamoDBReadPolicy:
+        - DynamoDBCrudPolicy:
             TableName: !Ref DeckdTable
       Events:
         GetRecommendations:

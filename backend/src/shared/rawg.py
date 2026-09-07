@@ -12,6 +12,32 @@ logger = logging.getLogger(__name__)
 _RAWG_BASE = "https://api.rawg.io/api"
 _TAG_LIMIT = 15
 
+# RAWG uses fixed slugs on its /games?genres= filter — a small explicit map
+# beats guessing because a few slugs (RPG, board games) don't derive cleanly
+# from the display name.
+_GENRE_SLUG_MAP = {
+    "action": "action",
+    "indie": "indie",
+    "adventure": "adventure",
+    "rpg": "role-playing-games-rpg",
+    "role-playing games (rpg)": "role-playing-games-rpg",
+    "strategy": "strategy",
+    "shooter": "shooter",
+    "casual": "casual",
+    "simulation": "simulation",
+    "puzzle": "puzzle",
+    "arcade": "arcade",
+    "platformer": "platformer",
+    "massively multiplayer": "massively-multiplayer",
+    "racing": "racing",
+    "sports": "sports",
+    "fighting": "fighting",
+    "family": "family",
+    "board games": "board-games",
+    "educational": "educational",
+    "card": "card",
+}
+
 
 def _api_key() -> str:
     return os.environ.get("RAWG_API_KEY", "")
@@ -145,3 +171,61 @@ def fetch_metadata(exe_lower: str) -> dict:
         return _failed_item(exe_lower, fetched_at)
 
     return _parse_detail(exe_lower, top, detail_resp.json(), fetched_at)
+
+
+def _genre_to_slug(name: str) -> str:
+    """Map a RAWG genre display name to its /games?genres= slug."""
+    key = name.lower().strip()
+    if key in _GENRE_SLUG_MAP:
+        return _GENRE_SLUG_MAP[key]
+    return key.replace(" ", "-").replace("(", "").replace(")", "")
+
+
+def search_games_by_genres(
+    genre_names: list[str], page_size: int = 40
+) -> Optional[list[dict]]:
+    """Query RAWG for candidate games matching the given genres.
+
+    Returns a list of trimmed game dicts sorted by RAWG rating descending,
+    or None on any network / non-2xx failure — callers must treat None as
+    "tier temporarily unavailable" and NOT surface a 500 to the client.
+    Empty input list returns [] (no genres → no candidates).
+    """
+    if not genre_names:
+        return []
+    slugs = ",".join(_genre_to_slug(g) for g in genre_names)
+    params = {
+        "genres": slugs,
+        "metacritic": "75,100",
+        "ordering": "-rating",
+        "page_size": page_size,
+        "key": _api_key(),
+    }
+    try:
+        resp = requests.get(f"{_RAWG_BASE}/games", params=params, timeout=10)
+    except requests.RequestException as exc:
+        logger.warning("rawg_genre_search_error err=%s", exc)
+        return None
+    if not resp.ok:
+        logger.warning("rawg_genre_search_non_ok status=%s", resp.status_code)
+        return None
+    results = resp.json().get("results") or []
+    out: list[dict] = []
+    for r in results:
+        slug = r.get("slug", "")
+        name = r.get("name", "")
+        if not slug or not name:
+            continue
+        raw_rating = r.get("rating")
+        rating = Decimal(str(raw_rating)) if raw_rating is not None else None
+        out.append({
+            "rawg_id": r.get("id"),
+            "name": name,
+            "slug": slug,
+            "background_image": r.get("background_image"),
+            "genres": [g["name"] for g in (r.get("genres") or [])],
+            "metacritic": r.get("metacritic"),
+            "released": r.get("released"),
+            "rating": rating,
+        })
+    return out

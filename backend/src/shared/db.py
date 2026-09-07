@@ -36,6 +36,42 @@ def put_trending_daily(games: list, updated_at: str, ttl: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Per-user recommendations cache  (SK=RECS#*)
+# ---------------------------------------------------------------------------
+
+_RECS_GENRE_SK = "RECS#GENRE"
+
+
+def get_recs_genre(user_id: str) -> Optional[dict]:
+    """Return the cached genre-tier recs item, or None if absent or expired.
+
+    We honour the TTL attribute in-code because DynamoDB's TTL sweeper is
+    eventually consistent (up to 48h delay) and would otherwise serve stale
+    recs long after their intended lifetime.
+    """
+    resp = get_table().get_item(Key={"pk": f"USER#{user_id}", "sk": _RECS_GENRE_SK})
+    item = resp.get("Item")
+    if not item:
+        return None
+    ttl = item.get("ttl")
+    if ttl is not None and int(ttl) < int(time.time()):
+        return None
+    return item
+
+
+def put_recs_genre(user_id: str, games: list, ttl: int) -> None:
+    """Cache the per-user genre-tier recs list with an explicit TTL epoch second."""
+    get_table().put_item(
+        Item={
+            "pk": f"USER#{user_id}",
+            "sk": _RECS_GENRE_SK,
+            "games": games,
+            "ttl": ttl,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # Game metadata helpers
 # ---------------------------------------------------------------------------
 
