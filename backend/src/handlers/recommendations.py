@@ -240,7 +240,17 @@ def _top_picks_for(
 
         suggestions = _parse_llm_json(raw_text)
         if suggestions is None:
-            logger.warning("llm_bad_json", user_id_hash=user_hash, text=raw_text[:200])
+            # Don't log the raw text — if the model ever echoes prompt
+            # fragments (game names from user's DDB history), we'd persist
+            # untrusted third-party content to CloudWatch. Length + short
+            # fingerprint is enough to grep for and diagnose.
+            fingerprint = raw_text[:40].replace("\n", " ")
+            logger.warning(
+                "llm_bad_json",
+                user_id_hash=user_hash,
+                text_len=len(raw_text),
+                text_fingerprint=fingerprint,
+            )
             return _serve_stale_or_none(cached_item)
 
         validated = _validate_llm_suggestions(suggestions, played_rawg_ids)
@@ -408,7 +418,16 @@ def _validate_llm_suggestions(
         if rawg_hit is None:
             continue
         metacritic = rawg_hit.get("metacritic")
-        if metacritic is None or int(metacritic) < 75:
+        if metacritic is None:
+            continue
+        try:
+            score = int(metacritic)
+        except (TypeError, ValueError):
+            # RAWG has been observed returning non-numeric metacritic values
+            # for some titles — reject rather than raise (the outer envelope
+            # would catch it, but this makes the rejection explicit).
+            continue
+        if score < 75:
             continue
         if rawg_hit.get("rawg_id") in played_rawg_ids:
             continue

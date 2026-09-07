@@ -326,6 +326,10 @@ Resources:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource:
+                # Foundation model ARN has NO account segment (Bedrock-managed,
+                # not customer-owned) — the double colon is intentional, not
+                # a typo. Both resources are verified by Bedrock on invoke,
+                # so we grant both.
                 - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-haiku-4-5-*
                 - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/apac.anthropic.claude-haiku-4-5-*
       Events:

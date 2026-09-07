@@ -14,11 +14,18 @@ from `context.invoked_function_arn` at first use.
 import json
 import logging
 import os
+import re
 from typing import Optional
 
 import boto3
 
 logger = logging.getLogger(__name__)
+
+# Inference profile IDs are dot / hyphen / colon separated identifiers.
+# Anything else (whitespace, newlines, path segments) is a misconfiguration
+# that would silently produce a malformed ARN and later surface as an opaque
+# AccessDeniedException from Bedrock.
+_PROFILE_ID_PATTERN = re.compile(r"^[\w.\-:]+$")
 
 
 class BedrockError(Exception):
@@ -62,13 +69,20 @@ def get_inference_profile_arn(context) -> str:
 
     parts = context.invoked_function_arn.split(":")
     if len(parts) < 5:
+        # Don't echo the raw ARN — it contains the account id and function
+        # name, both unnecessary in an exception message that will get logged.
         raise BedrockError(
-            f"cannot parse account/region from invoked_function_arn={context.invoked_function_arn}"
+            f"cannot parse account/region from invoked_function_arn "
+            f"(got {len(parts)} colon-separated parts, expected >=5)"
         )
     region = parts[3]
     account_id = parts[4]
+    profile_id = _profile_id()
+    if not _PROFILE_ID_PATTERN.match(profile_id):
+        # Guard against a mis-set env var producing a silent, malformed ARN.
+        raise BedrockError("BEDROCK_INFERENCE_PROFILE_ID contains invalid characters")
     _inference_profile_arn = (
-        f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{_profile_id()}"
+        f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{profile_id}"
     )
     return _inference_profile_arn
 
