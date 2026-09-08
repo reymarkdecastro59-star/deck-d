@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Landing from '@/pages/landing/landing_index'
+import LandingRedesign from '@/pages/landing/redesign/Landing'
 import Login from '@/pages/login/Login'
 import Dashboard from '@/pages/dashboard/Dashboard'
 import Devices from '@/pages/settings/Devices'
@@ -11,6 +12,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/preview" element={<LandingRedesign />} />
           <Route path="/login" element={<Login />} />
           <Route
             path="/dashboard"
