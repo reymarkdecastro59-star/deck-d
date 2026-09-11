@@ -1,3 +1,5 @@
 export { KPITile } from './KPITile'
 export { BarChart } from './BarChart'
 export { MomentumBar } from './MomentumBar'
+export { Heatmap } from './Heatmap'
+export { DistributionBar } from './DistributionBar'

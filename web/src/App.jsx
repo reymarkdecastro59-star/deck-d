@@ -5,7 +5,8 @@ import Dashboard from '@/pages/dashboard/Dashboard'
 import { Library, GameDetail } from '@/pages/library'
 import { Sessions } from '@/pages/sessions'
 import { Recommendations } from '@/pages/recommendations'
-import Devices from '@/pages/settings/Devices'
+import { Stats } from '@/pages/stats'
+import { Devices } from '@/pages/devices'
 import { AuthProvider, ProtectedRoute } from '@/auth/AuthContext'
 import { AppShell } from '@/app/shell'
 import { Onboarding, OnboardingGuard } from '@/app/onboarding'
@@ -47,17 +48,9 @@ export default function App() {
             <Route path="/library/:key" element={<GameDetail />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/recommendations" element={<Recommendations />} />
+            <Route path="/stats" element={<Stats />} />
+            <Route path="/devices" element={<Devices />} />
           </Route>
-
-          {/* Legacy standalone route retained until Phase I moves it under /devices. */}
-          <Route
-            path="/settings/devices"
-            element={
-              <ProtectedRoute>
-                <Devices />
-              </ProtectedRoute>
-            }
-          />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
