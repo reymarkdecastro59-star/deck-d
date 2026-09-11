@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Internal app design tokens — scoped by --app-* prefix; landing is unaffected. */
+@import './app/design/tokens.css';
+
 @keyframes nudge {
   0%,
   100% {
@@ -116,6 +119,30 @@
 /* ─── Responsive: Home section ─── */
 .home-cta-btn:hover {
   filter: brightness(1.18);
+}
+
+/* ─── Landing redesign (/preview) chrome hover states ─── */
+.topnav-tab {
+  transition: color 220ms ease;
+}
+.topnav-tab:hover {
+  color: #ffffff !important;
+}
+.topnav-auth:hover {
+  background: rgba(76, 125, 255, 0.28) !important;
+  border-color: rgba(76, 125, 255, 0.75) !important;
+}
+.landing-cta-primary:hover {
+  background: rgba(76, 125, 255, 0.34) !important;
+  border-color: rgba(76, 125, 255, 0.82) !important;
+  transform: translateY(-1px);
+}
+.landing-cta-ghost:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+.landing-foot-link:hover {
+  color: rgba(255, 255, 255, 0.75) !important;
 }
 
 /* Section counter: overlaps the glass card on mobile — hide it */

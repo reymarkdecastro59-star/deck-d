@@ -1,0 +1,20 @@
+// Barrel export for app UI primitives.
+// Import from '@/app/ui' rather than reaching into individual files.
+
+export { cn } from './cn'
+export { Button } from './Button'
+export { IconButton } from './IconButton'
+export { Card } from './Card'
+export { PageHeader } from './PageHeader'
+export { Skeleton, SkeletonText } from './Skeleton'
+export { EmptyState } from './EmptyState'
+export { ErrorState } from './ErrorState'
+export { Chip } from './Chip'
+export { Kbd } from './Kbd'
+export { Divider } from './Divider'
+export { Tabs } from './Tabs'
+export { SegmentedControl } from './SegmentedControl'
+export { Input } from './Input'
+export { Switch } from './Switch'
+export { Checkbox } from './Checkbox'
+export { Select } from './Select'

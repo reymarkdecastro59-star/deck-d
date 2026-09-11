@@ -1,0 +1,200 @@
+/*
+ * DECK'D internal application design tokens.
+ * Namespaced with --app-* so nothing here can collide with landing styles.
+ * Landing owns /pages/landing/**; this file is loaded globally but only
+ * takes effect on elements that opt in via the --app-* variables.
+ */
+
+:root {
+  /* ── surfaces ───────────────────────────────────────────────── */
+  --app-bg: #06070e;
+  --app-bg-2: #0a0b18;
+  --app-bg-3: #10122a;
+  --app-bg-raised: #141636;
+  --app-hairline: rgba(120, 140, 200, 0.08);
+  --app-border: rgba(120, 140, 200, 0.16);
+  --app-border-strong: rgba(120, 140, 200, 0.28);
+  --app-scrim: rgba(4, 5, 12, 0.72);
+
+  /* ── text ──────────────────────────────────────────────────── */
+  --app-fg: #e8eaf4;
+  --app-fg-strong: #ffffff;
+  --app-fg-muted: #8a8fae;
+  --app-fg-dim: #5c6180;
+
+  /* ── accent (restrained blue) ─────────────────────────────── */
+  --app-accent: #4c7dff;
+  --app-accent-hi: #7096ff;
+  --app-accent-lo: #2e4fb8;
+  --app-accent-tint: rgba(76, 125, 255, 0.1);
+  --app-accent-rail: rgba(76, 125, 255, 0.55);
+  --app-accent-ring: rgba(76, 125, 255, 0.32);
+
+  /* ── semantic (controlled) ────────────────────────────────── */
+  --app-ok: #3fbf87;
+  --app-ok-tint: rgba(63, 191, 135, 0.12);
+  --app-warn: #e0a54b;
+  --app-warn-tint: rgba(224, 165, 75, 0.12);
+  --app-danger: #e06565;
+  --app-danger-tint: rgba(224, 101, 101, 0.12);
+
+  /* ── session label chips (low-chroma, distinguishable) ────── */
+  --chip-focused: #6c8dff;
+  --chip-casual: #4fb8a5;
+  --chip-story: #a579e6;
+  --chip-exploration: #c89355;
+  --chip-neutral: #7a7f9e;
+
+  /* ── radii ─────────────────────────────────────────────────── */
+  --app-r-1: 4px;
+  --app-r-2: 8px;
+  --app-r-3: 12px;
+  --app-r-4: 16px;
+  --app-r-pill: 999px;
+
+  /* ── spacing (4-based) ────────────────────────────────────── */
+  --app-s-1: 4px;
+  --app-s-2: 8px;
+  --app-s-3: 12px;
+  --app-s-4: 16px;
+  --app-s-5: 20px;
+  --app-s-6: 24px;
+  --app-s-8: 32px;
+  --app-s-10: 40px;
+  --app-s-12: 48px;
+  --app-s-16: 64px;
+
+  /* ── layout ───────────────────────────────────────────────── */
+  --app-sidebar-w: 224px;
+  --app-topbar-h: 56px;
+  --app-content-max: 1440px;
+  --app-gutter: 32px;
+
+  /* ── elevation (mostly hairlines, minimal shadow) ─────────── */
+  --app-elev-0: none;
+  --app-elev-1: 0 0 0 1px var(--app-border);
+  --app-elev-hover: 0 0 0 1px var(--app-border-strong);
+  --app-elev-panel: 0 1px 0 var(--app-hairline), 0 12px 40px rgba(0, 0, 0, 0.4);
+  --app-elev-pop: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--app-border-strong);
+
+  /* ── type ─────────────────────────────────────────────────── */
+  --app-font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --app-font-display: 'Intel One Mono', ui-monospace, monospace;
+  --app-font-num: 'Intel One Mono', ui-monospace, monospace;
+
+  --app-fs-caption: 11px;
+  --app-fs-micro: 12px;
+  --app-fs-body: 14px;
+  --app-fs-body-lg: 15px;
+  --app-fs-h5: 16px;
+  --app-fs-h4: 20px;
+  --app-fs-h3: 24px;
+  --app-fs-h2: 32px;
+  --app-fs-h1: 44px;
+
+  --app-lh-tight: 1.15;
+  --app-lh-snug: 1.35;
+  --app-lh-normal: 1.55;
+
+  --app-ls-eyebrow: 1.8px;
+
+  /* ── motion ───────────────────────────────────────────────── */
+  --app-dur-1: 120ms;
+  --app-dur-2: 180ms;
+  --app-dur-3: 260ms;
+  --app-dur-4: 360ms;
+  --app-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --app-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── z-index scale ────────────────────────────────────────── */
+  --app-z-sidebar: 20;
+  --app-z-topbar: 30;
+  --app-z-drawer: 40;
+  --app-z-dialog: 50;
+  --app-z-toast: 60;
+  --app-z-tooltip: 70;
+}
+
+/* Light theme override — opt-in via data-theme='light' on <html>. */
+:root[data-theme='light'] {
+  --app-bg: #f6f7fb;
+  --app-bg-2: #ffffff;
+  --app-bg-3: #eceef6;
+  --app-bg-raised: #ffffff;
+  --app-hairline: rgba(30, 40, 80, 0.06);
+  --app-border: rgba(30, 40, 80, 0.12);
+  --app-border-strong: rgba(30, 40, 80, 0.22);
+  --app-scrim: rgba(20, 24, 40, 0.32);
+
+  --app-fg: #0f1226;
+  --app-fg-strong: #05061a;
+  --app-fg-muted: #4a506b;
+  --app-fg-dim: #7a7f9e;
+
+  --app-accent-tint: rgba(76, 125, 255, 0.08);
+
+  --app-elev-panel: 0 1px 0 var(--app-hairline), 0 6px 20px rgba(20, 24, 40, 0.08);
+  --app-elev-pop: 0 8px 24px rgba(20, 24, 40, 0.14), 0 0 0 1px var(--app-border-strong);
+}
+
+/* Reduced motion — user OS preference AND explicit app toggle. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --app-dur-1: 0ms;
+    --app-dur-2: 0ms;
+    --app-dur-3: 0ms;
+    --app-dur-4: 0ms;
+  }
+}
+:root[data-motion='reduced'] {
+  --app-dur-1: 0ms;
+  --app-dur-2: 0ms;
+  --app-dur-3: 0ms;
+  --app-dur-4: 0ms;
+}
+
+/* App-scoped base — only applies inside .app-root so the landing is untouched. */
+.app-root {
+  background: var(--app-bg);
+  color: var(--app-fg);
+  font-family: var(--app-font-ui);
+  font-size: var(--app-fs-body);
+  line-height: var(--app-lh-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.app-root *,
+.app-root *::before,
+.app-root *::after {
+  box-sizing: border-box;
+}
+
+.app-root ::selection {
+  background: var(--app-accent-tint);
+  color: var(--app-fg-strong);
+}
+
+/* Visible focus — never removed, only refined. */
+.app-root :focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+  border-radius: var(--app-r-1);
+}
+
+/* Numeric tabular figures wherever we render durations, counts, timestamps. */
+.app-num {
+  font-family: var(--app-font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Uppercase eyebrow — used sparingly for section labels. */
+.app-eyebrow {
+  font-family: var(--app-font-display);
+  font-size: var(--app-fs-caption);
+  font-weight: 600;
+  letter-spacing: var(--app-ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--app-fg-muted);
+}
