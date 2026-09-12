@@ -9,10 +9,13 @@ import { TopBar } from './TopBar'
 export function AppShell() {
   return (
     <div className="app-root flex min-h-dvh bg-[var(--app-bg)] text-[var(--app-fg)]">
+      <a href="#app-main" className="app-skip-link">
+        Skip to main content
+      </a>
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main className="flex-1 overflow-y-auto">
+        <main id="app-main" tabIndex={-1} className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
       </div>

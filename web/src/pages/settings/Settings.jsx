@@ -416,6 +416,20 @@ function HelpSection() {
             }
           />
           <Row
+            label="Legal"
+            hint="Terms and privacy — the honest, hobby-scale version."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button as={Link} to="/legal/terms" size="sm" variant="secondary">
+                  Terms
+                </Button>
+                <Button as={Link} to="/legal/privacy" size="sm" variant="secondary">
+                  Privacy
+                </Button>
+              </div>
+            }
+          />
+          <Row
             label="Version"
             value={<span className="app-num">{APP_VERSION}</span>}
             tone="muted"

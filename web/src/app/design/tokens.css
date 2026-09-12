@@ -153,6 +153,28 @@
   --app-dur-4: 0ms;
 }
 
+/* Skip-to-main link — visually hidden until keyboard focus lands on it.
+   Sits at the very top of the app tree so Tab from the URL bar reveals it. */
+.app-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 10px 14px;
+  font-family: var(--app-font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-fg-strong);
+  background: var(--app-bg-raised);
+  border: 1px solid var(--app-accent);
+  border-radius: var(--app-r-2);
+}
+.app-skip-link:focus,
+.app-skip-link:focus-visible {
+  left: 12px;
+  top: 12px;
+}
+
 /* App-scoped base — only applies inside .app-root so the landing is untouched. */
 .app-root {
   background: var(--app-bg);

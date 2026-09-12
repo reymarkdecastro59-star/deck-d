@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Checkbox } from '@/app/ui/Checkbox'
 import { Button } from '@/app/ui/Button'
 import { OnboardingLayout } from '../OnboardingLayout'
@@ -34,14 +35,41 @@ export function ConsentStep({ state, onChange, onNext, stepIdx, totalSteps }) {
             onChange={set('tos')}
             required
             title="Terms of Service"
-            body="I've read and agree to the DECK'D terms of use."
+            body={
+              <>
+                I've read and agree to the{' '}
+                <Link
+                  to="/legal/terms"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline decoration-[var(--app-border-strong)] underline-offset-2 hover:text-[var(--app-fg)]"
+                >
+                  DECK'D terms of use
+                </Link>
+                .
+              </>
+            }
           />
           <ConsentRow
             checked={consent.privacy}
             onChange={set('privacy')}
             required
             title="Privacy Policy"
-            body="I understand DECK'D stores my gameplay sessions, tracked game titles, and account email. My data is exportable and deletable at any time."
+            body={
+              <>
+                I understand DECK'D stores my gameplay sessions, tracked game titles, and account
+                email — as described in the{' '}
+                <Link
+                  to="/legal/privacy"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline decoration-[var(--app-border-strong)] underline-offset-2 hover:text-[var(--app-fg)]"
+                >
+                  privacy policy
+                </Link>
+                . My data is exportable and deletable at any time.
+              </>
+            }
           />
           <ConsentRow
             checked={consent.telemetry}
