@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ListChecks, RefreshCw, Search } from 'lucide-react'
 import { Chip } from '@/app/ui/Chip'
 import { EmptyState } from '@/app/ui/EmptyState'
@@ -7,6 +7,7 @@ import { IconButton } from '@/app/ui/IconButton'
 import { Input } from '@/app/ui/Input'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
+import { useToast } from '@/app/hooks/useToast'
 import { useSessions } from './useSessions'
 import { LABELS, LABEL_VALUES, labelTitle } from './labels'
 import { SessionRow } from './SessionRow'
@@ -25,13 +26,7 @@ export default function Sessions() {
   const [query, setQuery] = useState('')
   const [labelFilter, setLabelFilter] = useState('all')
   const [sort, setSort] = useState('newest')
-  const [toast, setToast] = useState(null)
-
-  useEffect(() => {
-    if (!toast) return
-    const id = setTimeout(() => setToast(null), 4000)
-    return () => clearTimeout(id)
-  }, [toast])
+  const { toast, showToast } = useToast()
 
   const rows = sessions.length ? sessions : EMPTY_ROWS
 
@@ -158,7 +153,7 @@ export default function Sessions() {
                   session={s}
                   onPatch={patchLabel}
                   onDelete={deleteSession}
-                  onError={setToast}
+                  onError={showToast}
                 />
               ))}
             </tbody>

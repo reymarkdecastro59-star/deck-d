@@ -8,6 +8,7 @@ import { ErrorState } from '@/app/ui/ErrorState'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { BarChart, KPITile, MomentumBar } from '@/app/viz'
 import { coverBackgroundStyle } from '@/app/ui/safeUrl'
+import { formatDuration, formatHours, relativeTime } from '@/lib/format'
 import { useDashboard } from './useDashboard'
 import { weeklyBuckets } from './weeklyBuckets'
 import { getLabelColor } from '@/app/design/tokens'
@@ -18,30 +19,6 @@ function firstName(email) {
   if (!email) return 'there'
   const local = email.split('@')[0]
   return local.charAt(0).toUpperCase() + local.slice(1)
-}
-
-function formatHours(v) {
-  if (v == null || Number.isNaN(v)) return '0'
-  if (v < 1) return v.toFixed(2).replace(/\.?0+$/, '') || '0'
-  if (v < 10) return v.toFixed(1)
-  return Math.round(v).toString()
-}
-
-function relativeTime(unix) {
-  const now = Date.now() / 1000
-  const diff = now - unix
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86_400) return `${Math.floor(diff / 3600)}h ago`
-  if (diff < 604_800) return `${Math.floor(diff / 86_400)}d ago`
-  return new Date(unix * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-function formatDuration(seconds) {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
 }
 
 export default function Dashboard() {

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Gamepad2, Star } from 'lucide-react'
 import { cn } from '@/app/ui/cn'
 import { coverBackgroundStyle } from '@/app/ui/safeUrl'
@@ -25,7 +26,7 @@ const TONE_STYLES = {
  * is only used by top-picks (LLM). Genres are capped to 3 to avoid runaway
  * chip stacks when RAWG returns a long list.
  */
-export function RecCard({ game, reason, variant = 'compact', className }) {
+function RecCardImpl({ game, reason, variant = 'compact', className }) {
   const genres = (game.genres || []).slice(0, 3)
   const tone = metacriticTone(game.metacritic)
   const coverStyle = coverBackgroundStyle(game.background_image)
@@ -100,3 +101,5 @@ export function RecCard({ game, reason, variant = 'compact', className }) {
     </article>
   )
 }
+
+export const RecCard = memo(RecCardImpl)

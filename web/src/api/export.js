@@ -1,33 +1,19 @@
-import { getIdToken, logout } from '@/auth/cognito'
-
-const API_URL = import.meta.env.VITE_API_URL
+import { apiFetch } from '@/api/client'
 
 // /export returns text (CSV) or JSON with a Content-Disposition header. We
-// can't use apiFetch because it always parses as JSON — fetch as blob, honor
-// the server-provided filename, and trigger a download in the browser.
+// need the raw Response to read the blob + filename header, but the auth /
+// 401 path lives in apiFetch — using raw:true lets us reuse it.
 export async function downloadExport(format = 'csv') {
   if (format !== 'csv' && format !== 'json') {
     throw new Error(`Unsupported export format: ${format}`)
   }
-  const token = getIdToken()
-  const res = await fetch(`${API_URL}/export?format=${format}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (res.status === 401) {
-    logout()
-    window.location.href = '/login'
-    throw new Error('Unauthorized')
-  }
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Export ${res.status}: ${body}`)
-  }
+  const res = await apiFetch(`/export?format=${format}`, { raw: true })
 
   // Filename comes from a server-controlled header — sanitise before assigning
   // to a.download. A compromised or bugged backend could otherwise supply path
   // separators, an unexpected extension, or characters that trip local FS
-  // policies. Strip everything to a narrow allowlist, then re-append the known
-  // extension so we always end up with a sensible name.
+  // policies. Strip to a narrow allowlist, then re-append the known extension
+  // so we always end up with a sensible name.
   const cd = res.headers.get('Content-Disposition') || ''
   const match = /filename="([^"]+)"/.exec(cd)
   const rawName = match?.[1] || `deckd-export.${format}`

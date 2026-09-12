@@ -9,6 +9,7 @@ import { Skeleton } from '@/app/ui/Skeleton'
 import { BarChart, DistributionBar, Heatmap, KPITile, MomentumBar } from '@/app/viz'
 import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 import { getLabelColor } from '@/app/design/tokens'
+import { formatDate, formatHours, formatMinutes } from '@/lib/format'
 import { labelTitle } from '@/pages/sessions/labels'
 import { rangeToWindow, useStats } from './useStats'
 import {
@@ -30,28 +31,10 @@ const RANGES = [
 
 const RANGE_DAY_COUNT = { '7d': 7, '30d': 30, '90d': 90 }
 
-function formatHours(v) {
-  if (v == null || Number.isNaN(v)) return '0'
-  if (v < 1) return v.toFixed(2).replace(/\.?0+$/, '') || '0'
-  if (v < 10) return v.toFixed(1)
-  return Math.round(v).toString()
-}
-
-function formatMinutes(v) {
-  if (v == null || Number.isNaN(v) || v <= 0) return '0m'
-  if (v < 60) return `${Math.round(v)}m`
-  const h = Math.floor(v / 60)
-  const m = Math.round(v - h * 60)
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
-
-function formatDate(unix) {
-  return new Date(unix * 1000).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
+// For "all-time" the daily-buckets chart is meaningless past its window.
+// Cap the visible daily chart at 30 days on "all" so recent shape stays
+// legible; the KPI strip above already reports the full-history totals.
+const ALL_TIME_BUCKET_DAYS = 30
 
 export default function Stats() {
   const [range, setRange] = useState('all')
@@ -106,19 +89,22 @@ function StatsEmpty() {
 
 function StatsPopulated({ range, setRange, reload, summary, sessions }) {
   const quick = useMemo(() => quickStats(sessions), [sessions])
-  const bucketDays = RANGE_DAY_COUNT[range] ?? 30
+  const bucketDays = RANGE_DAY_COUNT[range] ?? ALL_TIME_BUCKET_DAYS
   const daily = useMemo(() => dailyBuckets(sessions, bucketDays), [sessions, bucketDays])
   const heatmap = useMemo(() => hourOfDayMatrix(sessions), [sessions])
   const labels = useMemo(() => labelBreakdown(sessions), [sessions])
   const lengths = useMemo(() => sessionLengthBuckets(sessions), [sessions])
 
-  const labelSegments = labels.map((l) => ({
-    key: l.label,
-    value: l.hours,
-    color: getLabelColor(l.label),
-    label: labelTitle(l.label),
-  }))
-  const labelTotal = labels.reduce((sum, l) => sum + l.hours, 0)
+  const { labelSegments, labelTotal } = useMemo(() => {
+    const segments = labels.map((l) => ({
+      key: l.label,
+      value: l.hours,
+      color: getLabelColor(l.label),
+      label: labelTitle(l.label),
+    }))
+    const total = labels.reduce((sum, l) => sum + l.hours, 0)
+    return { labelSegments: segments, labelTotal: total }
+  }, [labels])
 
   // Games list already comes ranged from /dashboard, so no client-side rework.
   const topGames = (summary.games || []).slice(0, 8)

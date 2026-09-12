@@ -1,17 +1,12 @@
+import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import { Gamepad2 } from 'lucide-react'
 import { cn } from '@/app/ui/cn'
 import { coverBackgroundStyle } from '@/app/ui/safeUrl'
+import { formatHours } from '@/lib/format'
 import { gameKey } from './gameKey'
 
-function formatHours(v) {
-  if (v == null || Number.isNaN(v)) return '0'
-  if (v < 1) return v.toFixed(2).replace(/\.?0+$/, '') || '0'
-  if (v < 10) return v.toFixed(1)
-  return Math.round(v).toString()
-}
-
-export function GameCard({ game, className }) {
+function GameCardImpl({ game, className }) {
   const key = gameKey(game)
   const coverStyle = coverBackgroundStyle(game.background_image)
   return (
@@ -59,3 +54,5 @@ export function GameCard({ game, className }) {
     </Link>
   )
 }
+
+export const GameCard = memo(GameCardImpl)

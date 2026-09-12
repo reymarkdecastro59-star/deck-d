@@ -1,11 +1,11 @@
 import { cn } from '@/app/ui/cn'
 
 /**
- * Tracker status pill. Phase B: hardcoded 'offline' state until the
- * device/heartbeat endpoint is wired in Phase I.
+ * Tracker status pill. Currently defaults to `unknown` — no heartbeat
+ * endpoint is wired yet, so we shouldn't claim "offline" with authority.
  * status: 'online' | 'offline' | 'unknown'
  */
-export function StatusPill({ status = 'offline', label }) {
+export function StatusPill({ status = 'unknown', label }) {
   const map = {
     online: {
       dot: 'bg-[var(--app-ok)]',

@@ -4,7 +4,7 @@ import { cn } from '@/app/ui/cn'
  * KPI tile — big number in Intel One Mono, label above, optional footnote below.
  * Deliberately calm: no gradient bg, no animated counter. The number IS the point.
  */
-export function KPITile({ label, value, unit, footnote, accent, tone = 'default', className }) {
+export function KPITile({ label, value, unit, footnote, tone = 'default', className }) {
   const toneRing = {
     default: 'border-[var(--app-border)]',
     ok: 'border-[color:var(--app-ok)]/20',
@@ -29,7 +29,6 @@ export function KPITile({ label, value, unit, footnote, accent, tone = 'default'
         </span>
         {unit && <span className="text-[13px] text-[var(--app-fg-muted)]">{unit}</span>}
       </div>
-      {accent && <div className="mt-1 text-[12px] text-[var(--app-fg-muted)]">{accent}</div>}
       {footnote && (
         <div className="mt-3 text-[12px] leading-relaxed text-[var(--app-fg-dim)]">{footnote}</div>
       )}

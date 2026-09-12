@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { color } from '@/app/design/tokens'
 import { cn } from '@/app/ui/cn'
 
@@ -10,7 +11,7 @@ import { cn } from '@/app/ui/cn'
  * matrix: number[7][24]
  * rowLabels: string[7]  (short weekday names)
  */
-export function Heatmap({ matrix, rowLabels, ariaLabel = 'Activity by day and hour', className }) {
+function HeatmapImpl({ matrix, rowLabels, ariaLabel = 'Activity by day and hour', className }) {
   const max = matrix.reduce((m, row) => Math.max(m, ...row), 0)
 
   return (
@@ -61,3 +62,7 @@ export function Heatmap({ matrix, rowLabels, ariaLabel = 'Activity by day and ho
     </div>
   )
 }
+
+// 168 inline style objects per render — memo bails out when matrix reference
+// is stable (which it is thanks to the useMemo boundary in Stats).
+export const Heatmap = memo(HeatmapImpl)

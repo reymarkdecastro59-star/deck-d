@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Download, Info, MonitorSmartphone, RefreshCw, Shield } from 'lucide-react'
 import { Button } from '@/app/ui/Button'
 import { Card } from '@/app/ui/Card'
@@ -6,21 +6,17 @@ import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { IconButton } from '@/app/ui/IconButton'
 import { Skeleton } from '@/app/ui/Skeleton'
+import { useToast } from '@/app/hooks/useToast'
 import { useDevices } from './useDevices'
 import { DeviceRow } from './DeviceRow'
 
 const AGENT_DOWNLOAD_URL = 'https://github.com/RM-DC/DECK-D/releases/latest'
+const REVOKED_PANEL_ID = 'devices-revoked-panel'
 
 export default function Devices() {
   const { devices, loading, error, reload, rename, revoke } = useDevices()
-  const [toast, setToast] = useState(null)
+  const { toast, showToast } = useToast()
   const [showRevoked, setShowRevoked] = useState(false)
-
-  useEffect(() => {
-    if (!toast) return
-    const id = setTimeout(() => setToast(null), 4000)
-    return () => clearTimeout(id)
-  }, [toast])
 
   const active = useMemo(() => devices.filter((d) => !d.revoked_at), [devices])
   const revoked = useMemo(() => devices.filter((d) => d.revoked_at), [devices])
@@ -112,7 +108,7 @@ export default function Devices() {
                   device={d}
                   onRename={rename}
                   onRevoke={revoke}
-                  onError={setToast}
+                  onError={showToast}
                 />
               ))}
             </tbody>
@@ -124,6 +120,8 @@ export default function Devices() {
         <div>
           <button
             type="button"
+            aria-expanded={showRevoked}
+            aria-controls={REVOKED_PANEL_ID}
             onClick={() => setShowRevoked((v) => !v)}
             className="app-eyebrow flex items-center gap-2 text-[var(--app-fg-muted)] transition-colors hover:text-[var(--app-fg)]"
           >
@@ -133,7 +131,7 @@ export default function Devices() {
             </span>
           </button>
           {showRevoked && (
-            <Card padding="none" className="mt-3 overflow-hidden">
+            <Card id={REVOKED_PANEL_ID} padding="none" className="mt-3 overflow-hidden">
               <table className="w-full">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-[var(--app-fg-dim)]">

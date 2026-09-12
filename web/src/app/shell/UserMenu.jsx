@@ -44,6 +44,7 @@ export function UserMenu() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls="user-menu-panel"
         aria-label="Account menu"
         onClick={() => setOpen((v) => !v)}
         className={cn(
@@ -59,6 +60,7 @@ export function UserMenu() {
       <AnimatePresence>
         {open && (
           <motion.div
+            id="user-menu-panel"
             role="menu"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}

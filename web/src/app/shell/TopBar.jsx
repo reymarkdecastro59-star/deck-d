@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Bell, Search } from 'lucide-react'
 import { IconButton } from '@/app/ui/IconButton'
@@ -13,7 +13,6 @@ const TITLES = [
   { match: /^\/recommendations/, title: 'Recommendations' },
   { match: /^\/stats/, title: 'Stats' },
   { match: /^\/devices/, title: 'Devices' },
-  { match: /^\/settings\/devices/, title: 'Devices' },
   { match: /^\/settings/, title: 'Settings' },
 ]
 
@@ -24,7 +23,12 @@ function resolveTitle(pathname) {
 
 export function TopBar() {
   const [searchOpen, setSearchOpen] = useState(false)
-  useGlobalSearchShortcut(() => setSearchOpen(true))
+  // Stable handlers so useGlobalSearchShortcut's effect doesn't
+  // re-subscribe on every render.
+  const openSearch = useCallback(() => setSearchOpen(true), [])
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+  useGlobalSearchShortcut(openSearch)
+
   const { pathname } = useLocation()
   const title = useMemo(() => resolveTitle(pathname), [pathname])
 
@@ -40,7 +44,7 @@ export function TopBar() {
 
         <button
           type="button"
-          onClick={() => setSearchOpen(true)}
+          onClick={openSearch}
           className="hidden h-9 min-w-[260px] items-center gap-2 rounded-[var(--app-r-2)] border border-[var(--app-border)] bg-[var(--app-bg-2)] px-3 text-[13px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-bg-3)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-accent)] md:flex"
         >
           <Search className="h-4 w-4" strokeWidth={1.75} />
@@ -50,12 +54,7 @@ export function TopBar() {
           </kbd>
         </button>
 
-        <IconButton
-          size="sm"
-          label="Open search"
-          className="md:hidden"
-          onClick={() => setSearchOpen(true)}
-        >
+        <IconButton size="sm" label="Open search" className="md:hidden" onClick={openSearch}>
           <Search />
         </IconButton>
 
@@ -66,7 +65,7 @@ export function TopBar() {
         <UserMenu />
       </header>
 
-      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <GlobalSearch open={searchOpen} onClose={closeSearch} />
     </>
   )
 }

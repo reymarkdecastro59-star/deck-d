@@ -8,31 +8,9 @@ import { Skeleton } from '@/app/ui/Skeleton'
 import { safeImageUrl } from '@/app/ui/safeUrl'
 import { BarChart, KPITile } from '@/app/viz'
 import { getLabelColor } from '@/app/design/tokens'
+import { formatDate, formatDuration, formatHours } from '@/lib/format'
 import { weeklyBuckets } from '@/pages/dashboard/weeklyBuckets'
 import { useGameDetail } from './useGameDetail'
-
-function formatHours(v) {
-  if (v == null || Number.isNaN(v)) return '0'
-  if (v < 1) return v.toFixed(2).replace(/\.?0+$/, '') || '0'
-  if (v < 10) return v.toFixed(1)
-  return Math.round(v).toString()
-}
-
-function formatDate(unix) {
-  return new Date(unix * 1000).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function formatDuration(seconds) {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
 
 export default function GameDetail() {
   const { key } = useParams()
@@ -185,7 +163,7 @@ export default function GameDetail() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] text-[var(--app-fg)]">
-                        {formatDate(s.started_at)}
+                        {formatDate(s.started_at, 'time')}
                       </div>
                       {s.label && (
                         <div className="mt-0.5 text-[11.5px] capitalize text-[var(--app-fg-muted)]">

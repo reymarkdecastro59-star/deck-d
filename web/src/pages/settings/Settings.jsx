@@ -23,20 +23,12 @@ import { useAuth } from '@/auth/AuthContext'
 import { deleteProfile } from '@/api/profile'
 import { downloadExport } from '@/api/export'
 import { resetOnboarding } from '@/app/onboarding/state'
+import { formatDate } from '@/lib/format'
 import { useProfile } from './useProfile'
 
 const APP_VERSION = '0.1.0'
 const CONTACT_URL = '/#contact'
 const DOCS_URL = 'https://github.com/reymarkdecastro59-star/deck-d'
-
-function formatDate(unix) {
-  if (!unix) return '—'
-  return new Date(unix * 1000).toLocaleDateString(undefined, {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
 
 export default function Settings() {
   const { email, logout } = useAuth()
@@ -129,7 +121,7 @@ function AccountSection({ profile, email, onSignOut }) {
       <Card padding="none">
         <div className="divide-y divide-[var(--app-hairline)] px-5">
           <Row label="Email" value={email || profile?.email || '—'} />
-          <Row label="Member since" value={formatDate(profile?.created_at)} />
+          <Row label="Member since" value={formatDate(profile?.created_at, 'long')} />
           <Row
             label="Session"
             value="Signed in on this device."

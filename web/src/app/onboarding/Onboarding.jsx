@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -49,7 +49,7 @@ export default function Onboarding() {
 
   const goBack = stepIdx > 0 ? () => setStepIdx((i) => i - 1) : undefined
 
-  const StepComponent = useMemo(() => step.Component, [step])
+  const StepComponent = step.Component
 
   return (
     <AnimatePresence mode="wait">

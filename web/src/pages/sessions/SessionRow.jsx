@@ -1,38 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import { Button } from '@/app/ui/Button'
 import { IconButton } from '@/app/ui/IconButton'
 import { Select } from '@/app/ui/Select'
 import { getLabelColor } from '@/app/design/tokens'
+import { formatDate, formatDuration, relativeTime } from '@/lib/format'
 import { LABELS, labelTitle } from './labels'
 
 const SELECT_OPTIONS = LABELS.map((l) => ({ value: l.value, label: l.title }))
 
-function formatDate(unix) {
-  return new Date(unix * 1000).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function relativeTime(unix) {
-  const diff = Date.now() / 1000 - unix
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86_400) return `${Math.floor(diff / 3600)}h ago`
-  if (diff < 604_800) return `${Math.floor(diff / 86_400)}d ago`
-  return new Date(unix * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-function formatDuration(seconds) {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
-
-export function SessionRow({ session, onPatch, onDelete, onError }) {
+function SessionRowImpl({ session, onPatch, onDelete, onError }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const timerRef = useRef(null)
@@ -96,7 +73,9 @@ export function SessionRow({ session, onPatch, onDelete, onError }) {
         </div>
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--app-fg-muted)]">
-        <span title={formatDate(session.started_at)}>{relativeTime(session.started_at)}</span>
+        <span title={formatDate(session.started_at, 'time')}>
+          {relativeTime(session.started_at)}
+        </span>
       </td>
       <td className="app-num whitespace-nowrap px-4 py-3 text-[13px] text-[var(--app-fg)]">
         {formatDuration(session.duration_sec)}
@@ -104,21 +83,19 @@ export function SessionRow({ session, onPatch, onDelete, onError }) {
       <td className="whitespace-nowrap px-4 py-3 text-right">
         {confirming ? (
           <div className="inline-flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="h-8 rounded-[var(--app-r-2)] px-2.5 text-[12px] text-[var(--app-fg-muted)] transition-colors hover:bg-[var(--app-bg-3)] hover:text-[var(--app-fg)]"
-            >
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
               Cancel
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
               onClick={handleDelete}
               disabled={busy}
-              className="h-8 rounded-[var(--app-r-2)] bg-[var(--app-danger)] px-2.5 text-[12px] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              loading={busy}
+              className="!bg-[var(--app-danger)] hover:!bg-[var(--app-danger)] hover:opacity-90"
             >
               {busy ? 'Deleting…' : 'Delete'}
-            </button>
+            </Button>
           </div>
         ) : (
           <IconButton size="sm" label="Delete session" onClick={handleDelete}>
@@ -129,3 +106,7 @@ export function SessionRow({ session, onPatch, onDelete, onError }) {
     </tr>
   )
 }
+
+// Sessions can render 500 rows — memo means unrelated parent re-renders
+// (search/sort/filter state changes) don't cascade into every row.
+export const SessionRow = memo(SessionRowImpl)

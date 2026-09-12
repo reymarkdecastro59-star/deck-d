@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import { apiFetch } from '@/api/client'
+import { useApiResource } from '@/app/hooks/useApiResource'
 
 // Range values map to a lookback in days, or null for all-time.
 // Backend does the union math server-side when `from`/`to` are supplied, so
@@ -19,47 +20,33 @@ export function rangeToWindow(range, now = Math.floor(Date.now() / 1000)) {
 }
 
 export function useStats(range = 'all') {
-  const [summary, setSummary] = useState(null)
-  const [sessions, setSessions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [reloadKey, setReloadKey] = useState(0)
+  // Sessions endpoint is range-agnostic — fetch once and let the client
+  // aggregations filter by window. Range switches only refetch /dashboard,
+  // halving network chatter on toggles.
+  const sessionsRes = useApiResource(() =>
+    apiFetch('/sessions?limit=500').then((r) => r.sessions || [])
+  )
 
+  const dashRes = useApiResource(() => {
+    const rangeWindow = rangeToWindow(range)
+    const dashPath = rangeWindow
+      ? `/dashboard?from=${rangeWindow.from}&to=${rangeWindow.to}`
+      : '/dashboard'
+    return apiFetch(dashPath)
+  }, [range])
+
+  const reloadSessions = sessionsRes.reload
+  const reloadDash = dashRes.reload
   const reload = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    setReloadKey((k) => k + 1)
-  }, [])
+    reloadSessions()
+    reloadDash()
+  }, [reloadSessions, reloadDash])
 
-  useEffect(() => {
-    let cancelled = false
-
-    const window = rangeToWindow(range)
-    const dashPath = window ? `/dashboard?from=${window.from}&to=${window.to}` : '/dashboard'
-
-    // Ask sessions for the max allowed (500). Client-side aggregations filter
-    // by the range window so the same fetch serves every range switch until
-    // the user reloads. On range change we keep the previous data visible
-    // (stale-while-revalidate) — the reload button is the explicit "wipe and
-    // refetch" affordance.
-    Promise.all([apiFetch(dashPath), apiFetch('/sessions?limit=500')])
-      .then(([dash, sess]) => {
-        if (cancelled) return
-        setSummary(dash)
-        setSessions(sess.sessions || [])
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setError(err.message || 'Failed to load stats')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [range, reloadKey])
-
-  return { summary, sessions, loading, error, reload }
+  return {
+    summary: dashRes.data,
+    sessions: sessionsRes.data ?? [],
+    loading: sessionsRes.loading || dashRes.loading,
+    error: sessionsRes.error || dashRes.error,
+    reload,
+  }
 }

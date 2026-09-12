@@ -1,28 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Check, Pencil, Trash2, X } from 'lucide-react'
+import { Button } from '@/app/ui/Button'
 import { IconButton } from '@/app/ui/IconButton'
 import { Input } from '@/app/ui/Input'
+import { formatDate, relativeTime } from '@/lib/format'
 
-function formatDate(unix) {
-  if (!unix) return '—'
-  return new Date(unix * 1000).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
-function relativeTime(unix) {
-  if (!unix) return '—'
-  const diff = Date.now() / 1000 - unix
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86_400) return `${Math.floor(diff / 3600)}h ago`
-  if (diff < 604_800) return `${Math.floor(diff / 86_400)}d ago`
-  return new Date(unix * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-export function DeviceRow({ device, onRename, onRevoke, onError, readOnly = false }) {
+function DeviceRowImpl({ device, onRename, onRevoke, onError, readOnly = false }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(device.device_name)
   const [confirming, setConfirming] = useState(false)
@@ -124,21 +107,24 @@ export function DeviceRow({ device, onRename, onRevoke, onError, readOnly = fals
             </div>
           ) : confirming ? (
             <div className="inline-flex items-center gap-1.5">
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={() => setConfirming(false)}
-                className="h-8 rounded-[var(--app-r-2)] px-2.5 text-[12px] text-[var(--app-fg-muted)] transition-colors hover:bg-[var(--app-bg-3)] hover:text-[var(--app-fg)]"
+                disabled={busy}
               >
                 Cancel
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
                 onClick={handleRevoke}
                 disabled={busy}
-                className="h-8 rounded-[var(--app-r-2)] bg-[var(--app-danger)] px-2.5 text-[12px] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                loading={busy}
+                className="!bg-[var(--app-danger)] hover:!bg-[var(--app-danger)] hover:opacity-90"
               >
                 {busy ? 'Revoking…' : 'Revoke'}
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="inline-flex items-center gap-1">
@@ -155,3 +141,5 @@ export function DeviceRow({ device, onRename, onRevoke, onError, readOnly = fals
     </tr>
   )
 }
+
+export const DeviceRow = memo(DeviceRowImpl)

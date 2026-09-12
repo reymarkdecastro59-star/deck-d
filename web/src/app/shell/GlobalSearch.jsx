@@ -41,6 +41,7 @@ export function GlobalSearch({ open, onClose }) {
           />
           <motion.div
             role="dialog"
+            aria-modal="true"
             aria-label="Global search"
             className="relative w-full max-w-[560px] overflow-hidden rounded-[var(--app-r-3)] border border-[var(--app-border-strong)] bg-[var(--app-bg-raised)]"
             style={{ boxShadow: 'var(--app-elev-pop)' }}
