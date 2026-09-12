@@ -7,6 +7,7 @@ import { IconButton } from '@/app/ui/IconButton'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { BarChart, DistributionBar, Heatmap, KPITile, MomentumBar } from '@/app/viz'
+import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 import { getLabelColor } from '@/app/design/tokens'
 import { labelTitle } from '@/pages/sessions/labels'
 import { rangeToWindow, useStats } from './useStats'
@@ -361,15 +362,7 @@ function StatsPopulated({ range, setRange, reload, summary, sessions }) {
                   <div
                     aria-hidden
                     className="h-10 w-14 shrink-0 overflow-hidden rounded-[var(--app-r-2)] border border-[var(--app-hairline)] bg-[var(--app-bg-3)]"
-                    style={
-                      g.background_image
-                        ? {
-                            backgroundImage: `url(${g.background_image})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                          }
-                        : undefined
-                    }
+                    style={coverBackgroundStyle(g.background_image)}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[14px] text-[var(--app-fg)]">{g.game}</div>

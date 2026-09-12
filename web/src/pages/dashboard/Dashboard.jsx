@@ -7,6 +7,7 @@ import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { BarChart, KPITile, MomentumBar } from '@/app/viz'
+import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 import { useDashboard } from './useDashboard'
 import { weeklyBuckets } from './weeklyBuckets'
 import { getLabelColor } from '@/app/design/tokens'
@@ -183,15 +184,7 @@ function DashboardPopulated({ name, summary, recent }) {
                   <div
                     aria-hidden
                     className="h-10 w-14 shrink-0 overflow-hidden rounded-[var(--app-r-2)] border border-[var(--app-hairline)] bg-[var(--app-bg-3)]"
-                    style={
-                      g.background_image
-                        ? {
-                            backgroundImage: `url(${g.background_image})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                          }
-                        : undefined
-                    }
+                    style={coverBackgroundStyle(g.background_image)}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[14px] text-[var(--app-fg)]">{g.game}</div>

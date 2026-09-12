@@ -55,7 +55,10 @@ export class ErrorBoundary extends Component {
           You didn't do anything wrong — the app hit a bug we didn't anticipate. Try again, or
           reload the whole page if it keeps happening.
         </p>
-        {this.state.error?.message && (
+        {/* Error text is only shown in dev — prod builds keep the message
+            out of the DOM to avoid leaking file paths / component names /
+            library internals to a curious viewer. */}
+        {import.meta.env.DEV && this.state.error?.message && (
           <pre className="app-num mt-4 max-w-[560px] truncate rounded-[var(--app-r-2)] border border-[var(--app-hairline)] bg-[var(--app-bg-2)] px-3 py-2 text-[11.5px] text-[var(--app-fg-dim)]">
             {this.state.error.message}
           </pre>

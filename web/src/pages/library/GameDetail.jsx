@@ -5,6 +5,7 @@ import { Card } from '@/app/ui/Card'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { Skeleton } from '@/app/ui/Skeleton'
+import { safeImageUrl } from '@/app/ui/safeUrl'
 import { BarChart, KPITile } from '@/app/viz'
 import { getLabelColor } from '@/app/design/tokens'
 import { weeklyBuckets } from '@/pages/dashboard/weeklyBuckets'
@@ -80,12 +81,12 @@ export default function GameDetail() {
       <BackLink />
 
       <section className="relative overflow-hidden rounded-[var(--app-r-3)] border border-[var(--app-border)] bg-[var(--app-bg-2)]">
-        {game.background_image && (
+        {safeImageUrl(game.background_image) && (
           <>
             <div
               aria-hidden
               className="absolute inset-0 bg-cover bg-center opacity-55"
-              style={{ backgroundImage: `url(${game.background_image})` }}
+              style={{ backgroundImage: `url(${safeImageUrl(game.background_image)})` }}
             />
             <div
               aria-hidden

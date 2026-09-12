@@ -42,9 +42,10 @@ export default function Privacy() {
 
       <Section title="Cookies & local storage">
         <p>
-          The web app stores your auth token, onboarding progress, and UI preferences in browser
-          localStorage. No third-party cookies. Clearing your browser storage signs you out and
-          resets local preferences — server-side data is untouched.
+          The web app stores your Cognito auth tokens in <em>sessionStorage</em> (cleared when you
+          close the tab), and your onboarding progress plus UI preferences in <em>localStorage</em>{' '}
+          (persists until you clear it). No third-party cookies. Clearing browser storage signs you
+          out and resets local preferences — server-side data is untouched.
         </p>
       </Section>
 

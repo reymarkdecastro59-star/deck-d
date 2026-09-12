@@ -6,6 +6,16 @@ const userPool = new CognitoUserPool({
   Storage: window.sessionStorage,
 })
 
+// SDK-managed key prefix — used to sweep leftover tokens on logout.
+// See amazon-cognito-identity-js internals: keys are stored as
+// CognitoIdentityServiceProvider.<clientId>.<username>.<tokenKind>.
+const SDK_KEY_PREFIX = 'CognitoIdentityServiceProvider.'
+
+// Hold the CognitoUser reference from login so logout can always call
+// signOut() on the exact instance, not depend on pool.getCurrentUser()
+// (which returns null when the SDK's own state is out of sync).
+let activeUser = null
+
 export function login(email, password) {
   return new Promise((resolve, reject) => {
     const authDetails = new AuthenticationDetails({
@@ -19,6 +29,7 @@ export function login(email, password) {
     })
     cognitoUser.authenticateUser(authDetails, {
       onSuccess: (session) => {
+        activeUser = cognitoUser
         const idToken = session.getIdToken().getJwtToken()
         const refreshToken = session.getRefreshToken().getToken()
         sessionStorage.setItem('id_token', idToken)
@@ -32,11 +43,24 @@ export function login(email, password) {
 }
 
 export function logout() {
+  // 1. Wipe the app's flat keys (what apiFetch reads).
   sessionStorage.removeItem('id_token')
   sessionStorage.removeItem('refresh_token')
   sessionStorage.removeItem('email')
-  const current = userPool.getCurrentUser()
-  if (current) current.signOut()
+
+  // 2. Call signOut on the tracked user first — reliable when we hold a
+  //    reference from login. Fall back to whatever getCurrentUser returns
+  //    (e.g. on page refresh where activeUser is null).
+  const user = activeUser || userPool.getCurrentUser()
+  if (user) user.signOut()
+  activeUser = null
+
+  // 3. Safety net: sweep any SDK-managed keys the SDK left behind. Prevents
+  //    stale tokens from surviving a partial logout where signOut() no-ops.
+  for (let i = sessionStorage.length - 1; i >= 0; i--) {
+    const key = sessionStorage.key(i)
+    if (key && key.startsWith(SDK_KEY_PREFIX)) sessionStorage.removeItem(key)
+  }
 }
 
 export function getIdToken() {

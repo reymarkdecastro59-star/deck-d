@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Gamepad2 } from 'lucide-react'
 import { cn } from '@/app/ui/cn'
+import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 import { gameKey } from './gameKey'
 
 function formatHours(v) {
@@ -12,6 +13,7 @@ function formatHours(v) {
 
 export function GameCard({ game, className }) {
   const key = gameKey(game)
+  const coverStyle = coverBackgroundStyle(game.background_image)
   return (
     <Link
       to={`/library/${key}`}
@@ -27,17 +29,9 @@ export function GameCard({ game, className }) {
       <div
         aria-hidden
         className="relative aspect-[16/9] overflow-hidden bg-[var(--app-bg-3)]"
-        style={
-          game.background_image
-            ? {
-                backgroundImage: `url(${game.background_image})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }
-            : undefined
-        }
+        style={coverStyle}
       >
-        {!game.background_image && (
+        {!coverStyle && (
           <div className="absolute inset-0 flex items-center justify-center text-[var(--app-fg-dim)]">
             <Gamepad2 className="h-6 w-6" strokeWidth={1.5} />
           </div>

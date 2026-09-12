@@ -1,5 +1,6 @@
 import { Gamepad2, Star } from 'lucide-react'
 import { cn } from '@/app/ui/cn'
+import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 
 function metacriticTone(score) {
   if (score == null) return 'muted'
@@ -27,6 +28,7 @@ const TONE_STYLES = {
 export function RecCard({ game, reason, variant = 'compact', className }) {
   const genres = (game.genres || []).slice(0, 3)
   const tone = metacriticTone(game.metacritic)
+  const coverStyle = coverBackgroundStyle(game.background_image)
 
   return (
     <article
@@ -41,17 +43,9 @@ export function RecCard({ game, reason, variant = 'compact', className }) {
       <div
         aria-hidden
         className="relative aspect-[16/9] overflow-hidden bg-[var(--app-bg-3)]"
-        style={
-          game.background_image
-            ? {
-                backgroundImage: `url(${game.background_image})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }
-            : undefined
-        }
+        style={coverStyle}
       >
-        {!game.background_image && (
+        {!coverStyle && (
           <div className="absolute inset-0 flex items-center justify-center text-[var(--app-fg-dim)]">
             <Gamepad2 className="h-6 w-6" strokeWidth={1.5} />
           </div>

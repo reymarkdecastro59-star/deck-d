@@ -23,9 +23,16 @@ export async function downloadExport(format = 'csv') {
     throw new Error(`Export ${res.status}: ${body}`)
   }
 
+  // Filename comes from a server-controlled header — sanitise before assigning
+  // to a.download. A compromised or bugged backend could otherwise supply path
+  // separators, an unexpected extension, or characters that trip local FS
+  // policies. Strip everything to a narrow allowlist, then re-append the known
+  // extension so we always end up with a sensible name.
   const cd = res.headers.get('Content-Disposition') || ''
   const match = /filename="([^"]+)"/.exec(cd)
-  const filename = match?.[1] || `deckd-export.${format}`
+  const rawName = match?.[1] || `deckd-export.${format}`
+  const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, '_') || `deckd-export.${format}`
+  const filename = safeName.endsWith(`.${format}`) ? safeName : `${safeName}.${format}`
 
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
