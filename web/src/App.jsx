@@ -7,6 +7,7 @@ import { Sessions } from '@/pages/sessions'
 import { Recommendations } from '@/pages/recommendations'
 import { Stats } from '@/pages/stats'
 import { Devices } from '@/pages/devices'
+import { Settings } from '@/pages/settings'
 import { AuthProvider, ProtectedRoute } from '@/auth/AuthContext'
 import { AppShell } from '@/app/shell'
 import { Onboarding, OnboardingGuard } from '@/app/onboarding'
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/recommendations" element={<Recommendations />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/devices" element={<Devices />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
       </AuthProvider>
