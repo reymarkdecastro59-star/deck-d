@@ -4,6 +4,7 @@ import { Card } from '@/app/ui/Card'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { IconButton } from '@/app/ui/IconButton'
+import { PageHeader } from '@/app/ui/PageHeader'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { BarChart, DistributionBar, Heatmap, KPITile, MomentumBar } from '@/app/viz'
@@ -115,28 +116,19 @@ function StatsPopulated({ range, setRange, reload, summary, sessions }) {
 
   return (
     <div className="mx-auto max-w-[1280px] space-y-8 px-8 py-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="app-eyebrow text-[var(--app-fg-muted)]">Stats</div>
-          <h1
-            className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-            style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-          >
-            How you've been playing
-          </h1>
-          <p className="mt-2 max-w-[560px] text-[14px] text-[var(--app-fg-muted)]">
-            Headline hours are union-corrected (overlap stripped). Shape charts below are additive
-            over your session list — same {sessions.length.toLocaleString()} session
-            {sessions.length === 1 ? '' : 's'} in the {rangeLabel.toLowerCase()} window.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <SegmentedControl items={RANGES} value={range} onChange={setRange} size="sm" />
-          <IconButton size="sm" label="Reload stats" onClick={reload}>
-            <RefreshCw />
-          </IconButton>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Stats"
+        title="How you've been playing"
+        lede={`Headline hours are union-corrected (overlap stripped). Shape charts below are additive over your session list — same ${sessions.length.toLocaleString()} session${sessions.length === 1 ? '' : 's'} in the ${rangeLabel.toLowerCase()} window.`}
+        aside={
+          <div className="flex items-center gap-2">
+            <SegmentedControl items={RANGES} value={range} onChange={setRange} size="sm" />
+            <IconButton size="sm" label="Reload stats" onClick={reload}>
+              <RefreshCw />
+            </IconButton>
+          </div>
+        }
+      />
 
       <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <KPITile

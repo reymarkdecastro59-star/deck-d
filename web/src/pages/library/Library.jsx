@@ -5,6 +5,7 @@ import { Button } from '@/app/ui/Button'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { Input } from '@/app/ui/Input'
+import { PageHeader } from '@/app/ui/PageHeader'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useLibrary } from './useLibrary'
@@ -38,22 +39,17 @@ export default function Library() {
 
   return (
     <div className="mx-auto max-w-[1280px] space-y-6 px-8 py-8">
-      <header>
-        <div className="app-eyebrow text-[var(--app-fg-muted)]">Library</div>
-        <h1
-          className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-        >
-          Your games
-        </h1>
-        <p className="mt-2 text-[14px] text-[var(--app-fg-muted)]">
-          {loading
+      <PageHeader
+        eyebrow="Library"
+        title="Your games"
+        lede={
+          loading
             ? 'Loading…'
             : games.length === 0
               ? 'No games yet — install the tracker or log a session to populate this list.'
-              : `${games.length.toLocaleString()} game${games.length === 1 ? '' : 's'} tracked, sorted by momentum.`}
-        </p>
-      </header>
+              : `${games.length.toLocaleString()} game${games.length === 1 ? '' : 's'} tracked, sorted by momentum.`
+        }
+      />
 
       {!loading && !error && games.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { LogOut, Settings as SettingsIcon, User as UserIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/app/ui/cn'
@@ -15,6 +15,7 @@ export function UserMenu() {
   const [open, setOpen] = useState(false)
   const rootRef = useRef(null)
   const navigate = useNavigate()
+  const reduce = useReducedMotion()
 
   useEffect(() => {
     if (!open) return
@@ -62,10 +63,10 @@ export function UserMenu() {
           <motion.div
             id="user-menu-panel"
             role="menu"
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.14, ease: [0.2, 0.7, 0.2, 1] }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+            transition={{ duration: reduce ? 0 : 0.14, ease: [0.2, 0.7, 0.2, 1] }}
             className="absolute right-0 top-[calc(100%+6px)] w-[240px] overflow-hidden rounded-[var(--app-r-3)] border border-[var(--app-border-strong)] bg-[var(--app-bg-raised)]"
             style={{ boxShadow: 'var(--app-elev-pop)', zIndex: 'var(--app-z-tooltip)' }}
           >

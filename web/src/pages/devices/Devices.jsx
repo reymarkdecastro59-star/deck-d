@@ -5,6 +5,7 @@ import { Card } from '@/app/ui/Card'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { IconButton } from '@/app/ui/IconButton'
+import { PageHeader } from '@/app/ui/PageHeader'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useToast } from '@/app/hooks/useToast'
 import { useDevices } from './useDevices'
@@ -23,27 +24,19 @@ export default function Devices() {
 
   return (
     <div className="mx-auto max-w-[1280px] space-y-6 px-8 py-8">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <div className="app-eyebrow text-[var(--app-fg-muted)]">Devices</div>
-          <h1
-            className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-            style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-          >
-            Trackers on your account
-          </h1>
-          <p className="mt-2 max-w-[620px] text-[14px] text-[var(--app-fg-muted)]">
-            Every install of the DECK'D tray agent registers here on first sync. Rename them so you
-            can tell your desktop from your handheld. Revoke a device to cut off a lost machine —
-            the agent stops syncing on its next attempt.
-          </p>
-        </div>
-        {!loading && devices.length > 0 && (
-          <IconButton size="sm" label="Reload devices" onClick={reload}>
-            <RefreshCw />
-          </IconButton>
-        )}
-      </header>
+      <PageHeader
+        eyebrow="Devices"
+        title="Trackers on your account"
+        lede="Every install of the DECK'D tray agent registers here on first sync. Rename them so you can tell your desktop from your handheld. Revoke a device to cut off a lost machine — the agent stops syncing on its next attempt."
+        aside={
+          !loading &&
+          devices.length > 0 && (
+            <IconButton size="sm" label="Reload devices" onClick={reload}>
+              <RefreshCw />
+            </IconButton>
+          )
+        }
+      />
 
       {loading && <DevicesSkeleton />}
 

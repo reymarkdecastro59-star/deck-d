@@ -1,6 +1,7 @@
 import { Lock, Sparkles } from 'lucide-react'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
+import { PageHeader } from '@/app/ui/PageHeader'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useRecommendations } from './useRecommendations'
 import { RecCard } from './RecCard'
@@ -33,20 +34,11 @@ export default function Recommendations() {
 
   return (
     <div className="mx-auto max-w-[1280px] space-y-10 px-8 py-8">
-      <header>
-        <div className="app-eyebrow text-[var(--app-fg-muted)]">Recommendations</div>
-        <h1
-          className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-        >
-          Games worth your time
-        </h1>
-        <p className="mt-2 max-w-[560px] text-[14px] text-[var(--app-fg-muted)]">
-          Three tiers, gated on how much you've played. Nothing here is sponsored — picks come from
-          what's trending today, what matches your genres, and what a curator-tuned model thinks
-          you'll actually like.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Recommendations"
+        title="Games worth your time"
+        lede="Three tiers, gated on how much you've played. Nothing here is sponsored — picks come from what's trending today, what matches your genres, and what a curator-tuned model thinks you'll actually like."
+      />
 
       {!anyContent && (
         <EmptyState

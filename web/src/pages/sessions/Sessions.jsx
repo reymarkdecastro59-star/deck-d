@@ -5,6 +5,7 @@ import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { IconButton } from '@/app/ui/IconButton'
 import { Input } from '@/app/ui/Input'
+import { PageHeader } from '@/app/ui/PageHeader'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useToast } from '@/app/hooks/useToast'
@@ -55,29 +56,25 @@ export default function Sessions() {
 
   return (
     <div className="mx-auto max-w-[1280px] space-y-6 px-8 py-8">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <div className="app-eyebrow text-[var(--app-fg-muted)]">Sessions</div>
-          <h1
-            className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-            style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-          >
-            All sessions
-          </h1>
-          <p className="mt-2 text-[14px] text-[var(--app-fg-muted)]">
-            {loading
-              ? 'Loading…'
-              : sessions.length === 0
-                ? 'No sessions yet.'
-                : `${sessions.length.toLocaleString()} session${sessions.length === 1 ? '' : 's'} on record.`}
-          </p>
-        </div>
-        {!loading && sessions.length > 0 && (
-          <IconButton size="sm" label="Reload sessions" onClick={reload}>
-            <RefreshCw />
-          </IconButton>
-        )}
-      </header>
+      <PageHeader
+        eyebrow="Sessions"
+        title="All sessions"
+        lede={
+          loading
+            ? 'Loading…'
+            : sessions.length === 0
+              ? 'No sessions yet.'
+              : `${sessions.length.toLocaleString()} session${sessions.length === 1 ? '' : 's'} on record.`
+        }
+        aside={
+          !loading &&
+          sessions.length > 0 && (
+            <IconButton size="sm" label="Reload sessions" onClick={reload}>
+              <RefreshCw />
+            </IconButton>
+          )
+        }
+      />
 
       {!loading && !error && sessions.length > 0 && (
         <div className="space-y-3">

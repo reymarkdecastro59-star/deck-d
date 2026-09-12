@@ -18,6 +18,7 @@ import { Card } from '@/app/ui/Card'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { Input } from '@/app/ui/Input'
 import { Kbd } from '@/app/ui/Kbd'
+import { PageHeader } from '@/app/ui/PageHeader'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useAuth } from '@/auth/AuthContext'
 import { deleteProfile } from '@/api/profile'
@@ -45,19 +46,11 @@ export default function Settings() {
 
   return (
     <div className="mx-auto max-w-[880px] space-y-8 px-8 py-8">
-      <header>
-        <div className="app-eyebrow text-[var(--app-fg-muted)]">Settings</div>
-        <h1
-          className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-        >
-          Your account
-        </h1>
-        <p className="mt-2 max-w-[560px] text-[14px] text-[var(--app-fg-muted)]">
-          Manage the pieces of DECK'D that live outside a single page — account, appearance, data
-          export, and account erasure.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Settings"
+        title="Your account"
+        lede="Manage the pieces of DECK'D that live outside a single page — account, appearance, data export, and account erasure."
+      />
 
       <AccountSection profile={profile} email={email} onSignOut={logout} />
       <AppearanceSection />

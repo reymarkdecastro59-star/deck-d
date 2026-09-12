@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Activity, Download, Gamepad2, Info, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
@@ -5,12 +6,13 @@ import { Button } from '@/app/ui/Button'
 import { Card } from '@/app/ui/Card'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
+import { PageHeader } from '@/app/ui/PageHeader'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { BarChart, KPITile, MomentumBar } from '@/app/viz'
 import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 import { formatDuration, formatHours, relativeTime } from '@/lib/format'
+import { dailyBuckets } from '@/pages/stats/aggregations'
 import { useDashboard } from './useDashboard'
-import { weeklyBuckets } from './weeklyBuckets'
 import { getLabelColor } from '@/app/design/tokens'
 
 const HOUR_UNIT = 'h'
@@ -42,20 +44,12 @@ export default function Dashboard() {
 
 function DashboardEmpty({ name }) {
   return (
-    <div className="mx-auto max-w-[1280px] px-8 py-8">
-      <header className="mb-8">
-        <div className="app-eyebrow text-[var(--app-fg-muted)]">Dashboard</div>
-        <h1
-          className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-        >
-          Welcome, {name}.
-        </h1>
-        <p className="mt-2 max-w-[540px] text-[14px] text-[var(--app-fg-muted)]">
-          Your dashboard is waiting for your first session. Install the tracker and launch a game —
-          nothing shows up here until real data lands.
-        </p>
-      </header>
+    <div className="mx-auto max-w-[1280px] space-y-8 px-8 py-8">
+      <PageHeader
+        eyebrow="Dashboard"
+        title={`Welcome, ${name}.`}
+        lede="Your dashboard is waiting for your first session. Install the tracker and launch a game — nothing shows up here until real data lands."
+      />
 
       <EmptyState
         icon={<Gamepad2 className="h-8 w-8" strokeWidth={1.5} />}
@@ -84,24 +78,18 @@ function DashboardEmpty({ name }) {
 function DashboardPopulated({ name, summary, recent }) {
   const topGames = (summary.games || []).slice(0, 6)
   const maxDecay = Math.max(0.0001, ...topGames.map((g) => g.decay_hours))
-  const buckets = weeklyBuckets(recent)
-  const weeklyTotal = buckets.reduce((sum, b) => sum + b.value, 0)
+  const { buckets, weeklyTotal } = useMemo(() => {
+    const b = dailyBuckets(recent, 7)
+    return { buckets: b, weeklyTotal: b.reduce((sum, x) => sum + x.value, 0) }
+  }, [recent])
 
   return (
     <div className="mx-auto max-w-[1280px] space-y-8 px-8 py-8">
-      <header>
-        <div className="app-eyebrow text-[var(--app-fg-muted)]">Dashboard</div>
-        <h1
-          className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-        >
-          Welcome back, {name}.
-        </h1>
-        <p className="mt-2 text-[14px] text-[var(--app-fg-muted)]">
-          {summary.total_sessions.toLocaleString()} session{summary.total_sessions === 1 ? '' : 's'}{' '}
-          tracked to date.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Dashboard"
+        title={`Welcome back, ${name}.`}
+        lede={`${summary.total_sessions.toLocaleString()} session${summary.total_sessions === 1 ? '' : 's'} tracked to date.`}
+      />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KPITile
@@ -275,15 +263,7 @@ function DashboardPopulated({ name, summary, recent }) {
 function DashboardSkeleton({ name }) {
   return (
     <div className="mx-auto max-w-[1280px] space-y-8 px-8 py-8">
-      <header>
-        <div className="app-eyebrow text-[var(--app-fg-muted)]">Dashboard</div>
-        <h1
-          className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
-        >
-          Welcome back, {name}.
-        </h1>
-      </header>
+      <PageHeader eyebrow="Dashboard" title={`Welcome back, ${name}.`} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (

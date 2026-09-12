@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Search } from 'lucide-react'
+import { useFocusTrap } from '@/app/hooks/useFocusTrap'
 
 export function GlobalSearch({ open, onClose }) {
   const inputRef = useRef(null)
+  const panelRef = useRef(null)
   const [query, setQuery] = useState('')
+  const reduce = useReducedMotion()
+
+  useFocusTrap(panelRef, open)
 
   const close = useCallback(() => {
     setQuery('')
@@ -24,6 +29,14 @@ export function GlobalSearch({ open, onClose }) {
     }
   }, [open, close])
 
+  // Reduced-motion users get zero-duration fades — the presence transition
+  // still runs so state stays consistent, but nothing moves or scales.
+  const scrimTransition = { duration: reduce ? 0 : 0.18 }
+  const panelTransition = { duration: reduce ? 0 : 0.22, ease: [0.2, 0.7, 0.2, 1] }
+  const panelInitial = reduce ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }
+  const panelAnimate = reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }
+  const panelExit = reduce ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }
+
   return (
     <AnimatePresence>
       {open && (
@@ -33,22 +46,23 @@ export function GlobalSearch({ open, onClose }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
+          transition={scrimTransition}
         >
           <div
             className="absolute inset-0 bg-[var(--app-scrim)] backdrop-blur-sm"
             onClick={close}
           />
           <motion.div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-label="Global search"
             className="relative w-full max-w-[560px] overflow-hidden rounded-[var(--app-r-3)] border border-[var(--app-border-strong)] bg-[var(--app-bg-raised)]"
             style={{ boxShadow: 'var(--app-elev-pop)' }}
-            initial={{ opacity: 0, y: -8, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
+            initial={panelInitial}
+            animate={panelAnimate}
+            exit={panelExit}
+            transition={panelTransition}
           >
             <div className="flex h-12 items-center gap-3 border-b border-[var(--app-border)] px-4">
               <Search className="h-4 w-4 text-[var(--app-fg-muted)]" strokeWidth={1.75} />

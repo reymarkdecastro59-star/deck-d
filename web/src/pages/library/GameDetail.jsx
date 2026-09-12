@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Calendar, Gamepad2, Info } from 'lucide-react'
 import { Button } from '@/app/ui/Button'
@@ -9,12 +10,19 @@ import { safeImageUrl } from '@/app/ui/safeUrl'
 import { BarChart, KPITile } from '@/app/viz'
 import { getLabelColor } from '@/app/design/tokens'
 import { formatDate, formatDuration, formatHours } from '@/lib/format'
-import { weeklyBuckets } from '@/pages/dashboard/weeklyBuckets'
+import { dailyBuckets } from '@/pages/stats/aggregations'
 import { useGameDetail } from './useGameDetail'
 
 export default function GameDetail() {
   const { key } = useParams()
   const { game, halfLifeDays, sessions, loading, error, notFound, reload } = useGameDetail(key)
+
+  // Called before any early-return so hook order stays stable across
+  // loading/notFound/error branches.
+  const { buckets, weekTotal } = useMemo(() => {
+    const b = dailyBuckets(sessions, 7)
+    return { buckets: b, weekTotal: b.reduce((s, x) => s + x.value, 0) }
+  }, [sessions])
 
   if (loading) return <GameDetailSkeleton />
 
@@ -49,8 +57,6 @@ export default function GameDetail() {
     )
   }
 
-  const buckets = weeklyBuckets(sessions)
-  const weekTotal = buckets.reduce((s, b) => s + b.value, 0)
   const rawSumHours = (game.raw_sum_sec ?? 0) / 3600
   const overlapStrippedHours = (game.overlap_stripped_sec ?? 0) / 3600
 
