@@ -9,8 +9,8 @@ export function EmptyState({ icon, title, description, action, className }) {
     <div
       className={cn(
         'flex flex-col items-center justify-center text-center',
-        'rounded-[var(--app-r-3)] border border-dashed border-[var(--app-border)]',
-        'bg-[var(--app-bg-2)]/60 px-8 py-16',
+        'rounded-[var(--app-r-3)] border border-[var(--app-border)]',
+        'bg-[var(--app-bg-2)] px-8 py-14',
         className
       )}
     >

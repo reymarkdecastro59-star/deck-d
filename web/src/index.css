@@ -1,9 +1,11 @@
+/* Internal app design tokens — scoped by --app-* prefix; landing is unaffected.
+   MUST come before any other rule (including @tailwind directives). CSS spec
+   requires @import to appear first — PostCSS silently drops it otherwise. */
+@import './app/design/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Internal app design tokens — scoped by --app-* prefix; landing is unaffected. */
-@import './app/design/tokens.css';
 
 @keyframes nudge {
   0%,

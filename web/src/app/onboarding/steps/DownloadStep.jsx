@@ -10,6 +10,10 @@ const OS_OPTIONS = [
   { value: 'linux', label: 'Linux' },
 ]
 
+// Local dev build served from web/public/downloads/. Swap for a signed
+// release URL when we ship a proper artifact.
+const AGENT_DOWNLOAD_URL = '/downloads/deckd.exe'
+
 function detectOS() {
   const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent
   if (/Mac/i.test(ua)) return 'macos'
@@ -90,11 +94,18 @@ export function DownloadStep({ state, onChange, onNext, onBack, stepIdx, totalSt
                 standalone launchers.
               </p>
               <div className="mt-4 flex items-center gap-2">
-                {/* TODO(backend): wire href to a signed release artifact once the tracker ships. */}
-                <Button variant="primary" size="sm" leadingIcon={<Download className="h-4 w-4" />}>
+                <Button
+                  as="a"
+                  href={AGENT_DOWNLOAD_URL}
+                  download="deckd.exe"
+                  variant="primary"
+                  size="sm"
+                  leadingIcon={<Download className="h-4 w-4" />}
+                  onClick={() => acknowledge(true)}
+                >
                   Download for {OS_OPTIONS.find((o) => o.value === os)?.label}
                 </Button>
-                <span className="app-num text-[12px] text-[var(--app-fg-dim)]">v0.1 · ~14 MB</span>
+                <span className="app-num text-[12px] text-[var(--app-fg-dim)]">v0.1 · ~49 MB</span>
               </div>
             </div>
           </div>

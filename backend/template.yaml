@@ -32,6 +32,22 @@ Parameters:
       The Lambda constructs the full ARN at cold start from its own
       invoked_function_arn — this parameter only supplies the ID suffix.
 
+  SesSenderEmail:
+    Type: String
+    Default: reymarkdecastro59@gmail.com
+    Description: Verified SES sender identity (must be verified in this region).
+
+  SesRecipientEmail:
+    Type: String
+    Default: reymarkdecastro59@gmail.com
+    Description: Where contact-form submissions are delivered.
+
+  HcaptchaSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: hCaptcha secret key. Contact endpoint returns 500 until this is set.
+
 Resources:
 
   # -- Auth --------------------------------------------------------------------
@@ -121,6 +137,11 @@ Resources:
         AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
+        # CORS preflight (OPTIONS) must not inherit the Cognito authorizer,
+        # otherwise browsers can't call any endpoint that per-event opts out
+        # of auth (e.g. POST /contact). Explicit endpoints still enforce their
+        # own Authorizer setting.
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
@@ -361,6 +382,49 @@ Resources:
             Schedule: cron(0 3 * * ? *)
             Name: !Sub deckd-refresh-metadata-daily-${Stage}
             Description: Daily RAWG metadata refresh at 03:00 UTC
+
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-notifications-${Stage}
+      CodeUri: src/
+      Handler: handlers.notifications.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetNotifications:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /notifications
+            Method: GET
+
+  ContactFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.contact.handler
+      CodeUri: src/
+      Environment:
+        Variables:
+          SES_SENDER_EMAIL: !Ref SesSenderEmail
+          SES_RECIPIENT_EMAIL: !Ref SesRecipientEmail
+          HCAPTCHA_SECRET: !Ref HcaptchaSecret
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource:
+                - !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderEmail}
+      Events:
+        ContactPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /contact
+            Method: POST
+            Auth:
+              Authorizer: NONE
 
 # -- Outputs ------------------------------------------------------------------
 

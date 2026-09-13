@@ -1,4 +1,9 @@
-import { CognitoUserPool, CognitoUser, AuthenticationDetails } from 'amazon-cognito-identity-js'
+import {
+  CognitoUserPool,
+  CognitoUser,
+  AuthenticationDetails,
+  CognitoUserAttribute,
+} from 'amazon-cognito-identity-js'
 
 const userPool = new CognitoUserPool({
   UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
@@ -38,6 +43,41 @@ export function login(email, password) {
         resolve({ idToken, email })
       },
       onFailure: (err) => reject(err),
+    })
+  })
+}
+
+// Self-signup: creates the user with an email attribute and asks Cognito
+// to send a 6-digit verification code. The pool must have
+// AutoVerifiedAttributes: [email] (see template.yaml) — otherwise the code
+// email never sends. Resolves with the username Cognito assigned so the
+// confirm screen can echo it back.
+export function signUp(email, password) {
+  return new Promise((resolve, reject) => {
+    const attrs = [new CognitoUserAttribute({ Name: 'email', Value: email })]
+    userPool.signUp(email, password, attrs, null, (err, result) => {
+      if (err) return reject(err)
+      resolve({ username: result.user.getUsername(), userConfirmed: result.userConfirmed })
+    })
+  })
+}
+
+export function confirmSignUp(email, code) {
+  return new Promise((resolve, reject) => {
+    const user = new CognitoUser({ Username: email, Pool: userPool })
+    user.confirmRegistration(code, true, (err) => {
+      if (err) return reject(err)
+      resolve()
+    })
+  })
+}
+
+export function resendConfirmationCode(email) {
+  return new Promise((resolve, reject) => {
+    const user = new CognitoUser({ Username: email, Pool: userPool })
+    user.resendConfirmationCode((err) => {
+      if (err) return reject(err)
+      resolve()
     })
   })
 }

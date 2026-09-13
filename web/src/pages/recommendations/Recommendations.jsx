@@ -72,6 +72,7 @@ export default function Recommendations() {
           eyebrow="Top picks for you"
           title="Curated picks unlock at 5 tracked games"
           description={`Play a few more games — DECK'D needs at least ${TOP_PICKS_UNLOCK_MIN} games with resolvable metadata before the model can suggest something meaningful.`}
+          previewCount={2}
         />
       )}
 
@@ -133,20 +134,39 @@ function Section({ eyebrow, title, lede, children }) {
   )
 }
 
-function LockedTier({ eyebrow, title, description }) {
+function LockedTier({ eyebrow, title, description, previewCount = 3 }) {
   return (
-    <section>
-      <div className="bg-[var(--app-bg-2)]/50 flex items-start gap-4 rounded-[var(--app-r-3)] border border-dashed border-[var(--app-border)] p-6">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--app-r-2)] bg-[var(--app-bg-3)] text-[var(--app-fg-muted)]">
-          <Lock className="h-5 w-5" strokeWidth={1.5} />
-        </span>
-        <div>
+    <section className="space-y-4">
+      <div>
+        <div className="flex items-center gap-2">
           <div className="app-eyebrow text-[var(--app-fg-muted)]">{eyebrow}</div>
-          <h2 className="mt-1 text-[15px] font-medium text-[var(--app-fg)]">{title}</h2>
-          <p className="mt-1.5 max-w-[560px] text-[13px] leading-relaxed text-[var(--app-fg-muted)]">
-            {description}
-          </p>
+          <Lock className="h-3 w-3 text-[var(--app-fg-dim)]" strokeWidth={2} />
         </div>
+        <h2 className="mt-1 text-[18px] font-medium tracking-tight text-[var(--app-fg-strong)]">
+          {title}
+        </h2>
+        <p className="mt-1.5 max-w-[620px] text-[13px] leading-relaxed text-[var(--app-fg-muted)]">
+          {description}
+        </p>
+      </div>
+      {/* Silhouette preview — hints at what will land here, without pretending
+          to be real data. Cards have no border-dashed, just muted surfaces. */}
+      <div
+        aria-hidden
+        className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      >
+        {Array.from({ length: previewCount }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-[var(--app-r-3)] border border-[var(--app-hairline)] bg-[var(--app-bg-2)] p-0 opacity-40"
+          >
+            <div className="aspect-[16/9] rounded-t-[var(--app-r-3)] bg-[var(--app-bg-3)]" />
+            <div className="space-y-2 p-4">
+              <div className="h-3 w-3/4 rounded-full bg-[var(--app-bg-3)]" />
+              <div className="h-2.5 w-1/2 rounded-full bg-[var(--app-bg-3)]" />
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   )

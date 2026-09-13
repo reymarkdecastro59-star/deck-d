@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "fetch:covers": "node scripts/fetch-covers.mjs",
     "lint": "oxlint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -21,6 +22,7 @@
     ]
   },
   "dependencies": {
+    "@hcaptcha/react-hcaptcha": "^1.11.1",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "@react-three/postprocessing": "^3.1.1",
@@ -48,6 +50,7 @@
     "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.19",
     "vite": "^8.2.0"
   }

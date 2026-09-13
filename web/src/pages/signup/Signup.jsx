@@ -1,31 +1,48 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, LogIn } from 'lucide-react'
+import { ArrowLeft, UserPlus } from 'lucide-react'
 import { Button } from '@/app/ui/Button'
 import { Input } from '@/app/ui/Input'
 import { useAuth } from '@/auth/AuthContext'
+import { signUp } from '@/auth/cognito'
 
-export default function Login() {
-  const { login, isAuthenticated } = useAuth()
+// Password policy mirrors the Cognito UserPool config in backend/template.yaml
+// (8+ chars, one number). Validating client-side avoids a round-trip for the
+// most common mistakes; Cognito is still the authority.
+function validatePassword(pw) {
+  if (pw.length < 8) return 'At least 8 characters.'
+  if (!/\d/.test(pw)) return 'Must include at least one number.'
+  return null
+}
+
+export default function Signup() {
+  const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [accepted, setAccepted] = useState(false)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  // Already signed in — bounce straight to the dashboard so a back-tap or
-  // stale tab doesn't leave the user staring at an empty login form.
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+    const pwError = validatePassword(password)
+    if (pwError) return setError(pwError)
+    if (password !== confirm) return setError('Passwords do not match.')
+    if (!accepted) return setError('Accept the Terms and Privacy Policy to continue.')
+
     setLoading(true)
     try {
-      await login(email, password)
-      navigate('/dashboard', { replace: true })
+      await signUp(email, password)
+      // Pass the email through router state so the confirm screen can
+      // pre-fill and echo it — one less form field to re-type.
+      navigate('/signup/confirm', { replace: true, state: { email } })
     } catch (err) {
-      setError(err.message || 'Sign in failed')
+      setError(err.message || 'Sign up failed')
     } finally {
       setLoading(false)
     }
@@ -48,10 +65,10 @@ export default function Login() {
             className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
             style={{ fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1 }}
           >
-            Sign in
+            Create account
           </h1>
           <p className="mt-2 text-[14px] text-[var(--app-fg-muted)]">
-            Use the credentials from your DECK&apos;D account.
+            You'll get a 6-digit code by email to confirm.
           </p>
         </div>
 
@@ -78,12 +95,53 @@ export default function Login() {
             <Input
               type="password"
               required
-              autoComplete="current-password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
+              placeholder="At least 8 chars, one number"
               invalid={Boolean(error)}
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[12.5px] text-[var(--app-fg-muted)]">
+              Confirm password
+            </span>
+            <Input
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Type it again"
+              invalid={Boolean(error)}
+            />
+          </label>
+
+          <label className="flex items-start gap-2 text-[12.5px] text-[var(--app-fg-muted)]">
+            <input
+              type="checkbox"
+              checked={accepted}
+              onChange={(e) => setAccepted(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-[var(--app-accent)]"
+            />
+            <span>
+              I agree to the{' '}
+              <Link
+                to="/legal/terms"
+                className="underline decoration-[var(--app-border-strong)] underline-offset-2 hover:text-[var(--app-fg)]"
+              >
+                Terms
+              </Link>{' '}
+              and{' '}
+              <Link
+                to="/legal/privacy"
+                className="underline decoration-[var(--app-border-strong)] underline-offset-2 hover:text-[var(--app-fg)]"
+              >
+                Privacy Policy
+              </Link>
+              .
+            </span>
           </label>
 
           {error && (
@@ -100,38 +158,20 @@ export default function Login() {
             variant="primary"
             className="w-full"
             loading={loading}
-            leadingIcon={<LogIn className="h-4 w-4" />}
+            leadingIcon={<UserPlus className="h-4 w-4" />}
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? 'Creating account…' : 'Create account'}
           </Button>
         </form>
 
         <p className="mt-6 text-center text-[12.5px] text-[var(--app-fg-muted)]">
-          New to DECK&apos;D?{' '}
+          Already have an account?{' '}
           <Link
-            to="/signup"
+            to="/login"
             className="text-[var(--app-fg)] underline decoration-[var(--app-border-strong)] underline-offset-2 hover:text-[var(--app-fg-strong)]"
           >
-            Create an account
+            Sign in
           </Link>
-        </p>
-
-        <p className="mt-4 text-center text-[12px] text-[var(--app-fg-dim)]">
-          By continuing you agree to our{' '}
-          <Link
-            to="/legal/terms"
-            className="underline decoration-[var(--app-border-strong)] underline-offset-2 hover:text-[var(--app-fg)]"
-          >
-            Terms
-          </Link>{' '}
-          and{' '}
-          <Link
-            to="/legal/privacy"
-            className="underline decoration-[var(--app-border-strong)] underline-offset-2 hover:text-[var(--app-fg)]"
-          >
-            Privacy Policy
-          </Link>
-          .
         </p>
       </div>
     </div>

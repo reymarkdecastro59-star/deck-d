@@ -29,6 +29,13 @@ const AUTH_BTN_STYLE = {
   transition: 'background 250ms ease, border-color 250ms ease',
 }
 
+const AUTH_BTN_PRIMARY_STYLE = {
+  ...AUTH_BTN_STYLE,
+  background: 'rgba(76, 125, 255, 0.22)',
+  border: '1px solid rgba(76, 125, 255, 0.58)',
+  color: '#fff',
+}
+
 export default function Navbar({ activeSection = 0, onNavigate }) {
   const { isAuthenticated, email, logout } = useAuth()
   const navigate = useNavigate()
@@ -157,9 +164,14 @@ export default function Navbar({ activeSection = 0, onNavigate }) {
             </button>
           </>
         ) : (
-          <Link to="/login" className="nav-auth-btn" style={AUTH_BTN_STYLE}>
-            Log In
-          </Link>
+          <>
+            <Link to="/login" className="nav-auth-btn" style={AUTH_BTN_STYLE}>
+              Log In
+            </Link>
+            <Link to="/signup" className="nav-auth-btn" style={AUTH_BTN_PRIMARY_STYLE}>
+              Sign Up
+            </Link>
+          </>
         )}
       </div>
     </nav>

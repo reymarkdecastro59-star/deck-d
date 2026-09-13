@@ -1,13 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { LogOut, Settings as SettingsIcon, User as UserIcon } from 'lucide-react'
+import { ChevronDown, LogOut, Settings as SettingsIcon, User as UserIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/app/ui/cn'
 
 function initial(email) {
   if (!email) return '?'
   return email.charAt(0).toUpperCase()
+}
+
+function displayName(email) {
+  if (!email) return 'Account'
+  const local = email.split('@')[0].replace(/[0-9]+$/, '')
+  if (!local) return 'Account'
+  // Match Dashboard's greeting heuristic so the sidebar/greeting stay in sync.
+  const capped = local.length > 12 ? local.slice(0, 7) : local
+  return capped.charAt(0).toUpperCase() + capped.slice(1)
 }
 
 export function UserMenu() {
@@ -49,14 +58,32 @@ export function UserMenu() {
         aria-label="Account menu"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-[var(--app-r-pill)]',
-          'border border-[var(--app-border)] bg-[var(--app-bg-3)]',
-          'text-[13px] font-medium text-[var(--app-fg)]',
-          'transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)]',
+          'flex h-10 items-center gap-2 rounded-[var(--app-r-pill)] pl-1 pr-3',
+          'border border-transparent bg-transparent',
+          'text-[13px] text-[var(--app-fg)]',
+          'transition-colors [transition-duration:var(--app-dur-1)]',
+          'hover:border-[var(--app-border)] hover:bg-[var(--app-bg-2)]',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-accent)]'
         )}
       >
-        {initial(email)}
+        <span
+          aria-hidden
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-full',
+            'border border-[var(--app-border)] bg-[var(--app-bg-3)]',
+            'text-[12.5px] font-medium text-[var(--app-fg-strong)]'
+          )}
+        >
+          {initial(email)}
+        </span>
+        <span className="hidden max-w-[120px] truncate sm:inline">{displayName(email)}</span>
+        <ChevronDown
+          className={cn(
+            'hidden h-3.5 w-3.5 text-[var(--app-fg-dim)] transition-transform sm:block',
+            open && 'rotate-180'
+          )}
+          strokeWidth={2}
+        />
       </button>
       <AnimatePresence>
         {open && (

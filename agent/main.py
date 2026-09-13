@@ -178,11 +178,108 @@ def _confirm_switch_dialog(open_games) -> bool:
         return False
 
 
+def _login_dialog() -> bool:
+    """
+    Modal Tkinter login dialog. Runs Tk on a dedicated thread and joins so
+    the caller (main thread on first-run, tray thread on 'Add account…')
+    stays responsive. Returns True on successful auth.login(), False on
+    cancel or failure.
+
+    In a PyInstaller onefile bundle we can't spawn login.py — sys.executable
+    IS the bundled exe, not a Python interpreter — so the dialog is built
+    inline here.
+    """
+    import queue as _q
+    result: "_q.Queue[bool]" = _q.Queue()
+
+    def _run():
+        try:
+            import tkinter as tk
+            from tkinter import ttk, messagebox
+
+            root = tk.Tk()
+            root.title("DECK'D — Sign in")
+            root.attributes("-topmost", True)
+            root.resizable(False, False)
+            try:
+                root.geometry("360x210")
+            except Exception:
+                pass
+
+            outer = ttk.Frame(root, padding=(18, 16, 18, 12))
+            outer.pack(fill="both", expand=True)
+
+            ttk.Label(outer, text="Sign in to DECK'D", font=("Segoe UI", 12, "bold")).pack(
+                anchor="w"
+            )
+            ttk.Label(
+                outer,
+                text="Use your DECK'D account so tracked sessions land in your dashboard.",
+                foreground="#666",
+                wraplength=320,
+            ).pack(anchor="w", pady=(2, 10))
+
+            ttk.Label(outer, text="Email").pack(anchor="w")
+            email_var = tk.StringVar()
+            email_entry = ttk.Entry(outer, textvariable=email_var, width=40)
+            email_entry.pack(fill="x", pady=(2, 8))
+
+            ttk.Label(outer, text="Password").pack(anchor="w")
+            pw_var = tk.StringVar()
+            pw_entry = ttk.Entry(outer, textvariable=pw_var, show="•", width=40)
+            pw_entry.pack(fill="x", pady=(2, 12))
+
+            btn_row = ttk.Frame(outer)
+            btn_row.pack(fill="x")
+
+            def _submit():
+                email = email_var.get().strip()
+                pw = pw_var.get()
+                if not email or not pw:
+                    messagebox.showwarning(
+                        "DECK'D", "Enter both email and password.", parent=root
+                    )
+                    return
+                try:
+                    auth.login(email, pw)
+                    result.put(True)
+                    root.destroy()
+                except Exception as exc:  # noqa: BLE001 — surface any auth failure
+                    messagebox.showerror("Sign-in failed", str(exc), parent=root)
+
+            def _cancel():
+                result.put(False)
+                root.destroy()
+
+            ttk.Button(btn_row, text="Cancel", command=_cancel).pack(side="right")
+            ttk.Button(btn_row, text="Sign in", command=_submit).pack(
+                side="right", padx=(0, 8)
+            )
+            root.bind("<Return>", lambda _e: _submit())
+            root.bind("<Escape>", lambda _e: _cancel())
+            root.protocol("WM_DELETE_WINDOW", _cancel)
+            email_entry.focus_set()
+
+            root.mainloop()
+        except Exception:
+            result.put(False)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=600)  # 10 min — plenty for typing a password
+    if t.is_alive():
+        return False
+    try:
+        return result.get_nowait()
+    except _q.Empty:
+        return False
+
+
 def _on_add_account(icon, item):
-    """Spawn login.py as a detached subprocess. Fire-and-forget — tray reads store fresh."""
-    login_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "login.py")
-    subprocess.Popen([sys.executable, login_path])
-    _refresh_tray()
+    """Open the login dialog. On success, refresh tray so new account shows up."""
+    if _login_dialog():
+        notifications.reset_session_dedup()
+        _refresh_tray()
 
 
 def _on_logout(icon, item):
@@ -216,8 +313,11 @@ def _on_quit(icon, item):
 def main():
     global _ICON_REF
     if not is_logged_in():
-        print("Not logged in. Run: python login.py")
-        return
+        # First-run: pop the login dialog immediately. If the user cancels,
+        # exit cleanly instead of vanishing silently — in --windowed mode
+        # they'd never know why the app "did nothing".
+        if not _login_dialog():
+            return
 
     # Phase 5: close any sessions the watcher left open on last crash BEFORE
     # the fresh watcher starts, so we don't race on the same row.

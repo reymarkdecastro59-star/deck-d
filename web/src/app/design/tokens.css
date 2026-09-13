@@ -65,10 +65,10 @@
   --app-s-16: 64px;
 
   /* ── layout ───────────────────────────────────────────────── */
-  --app-sidebar-w: 224px;
-  --app-topbar-h: 56px;
+  --app-sidebar-w: 248px;
+  --app-topbar-h: 64px;
   --app-content-max: 1440px;
-  --app-gutter: 32px;
+  --app-gutter: 40px;
 
   /* ── elevation (mostly hairlines, minimal shadow) ─────────── */
   --app-elev-0: none;
@@ -154,11 +154,27 @@
 }
 
 /* Skip-to-main link — visually hidden until keyboard focus lands on it.
-   Sits at the very top of the app tree so Tab from the URL bar reveals it. */
-.app-skip-link {
-  position: absolute;
-  left: -9999px;
-  top: 0;
+   Uses both the legacy `clip` and modern `clip-path` and !important on
+   the size constraints so a rogue Tailwind preflight or reset can't
+   accidentally reveal it. Standard WCAG visually-hidden pattern.
+   Focus state: fixed to viewport, becomes a real interactive button. */
+.app-skip-link:not(:focus):not(:focus-visible) {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+.app-skip-link:focus,
+.app-skip-link:focus-visible {
+  position: fixed;
+  top: 12px;
+  left: 12px;
   z-index: 100;
   padding: 10px 14px;
   font-family: var(--app-font-ui);
@@ -168,11 +184,6 @@
   background: var(--app-bg-raised);
   border: 1px solid var(--app-accent);
   border-radius: var(--app-r-2);
-}
-.app-skip-link:focus,
-.app-skip-link:focus-visible {
-  left: 12px;
-  top: 12px;
 }
 
 /* App-scoped base — only applies inside .app-root so the landing is untouched. */

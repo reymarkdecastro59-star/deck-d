@@ -11,7 +11,10 @@ import { useToast } from '@/app/hooks/useToast'
 import { useDevices } from './useDevices'
 import { DeviceRow } from './DeviceRow'
 
-const AGENT_DOWNLOAD_URL = 'https://github.com/RM-DC/DECK-D/releases/latest'
+// Local dev build served from web/public/downloads/. Swap for a signed
+// release URL (S3, GitHub Releases) when we ship a proper artifact.
+const TRACKER_AVAILABLE = true
+const AGENT_DOWNLOAD_URL = '/downloads/deckd.exe'
 const REVOKED_PANEL_ID = 'devices-revoked-panel'
 
 export default function Devices() {
@@ -53,8 +56,7 @@ export default function Devices() {
             <Button
               as="a"
               href={AGENT_DOWNLOAD_URL}
-              target="_blank"
-              rel="noreferrer"
+              download="deckd.exe"
               variant="primary"
               leadingIcon={<Download className="h-4 w-4" />}
             >
@@ -76,8 +78,7 @@ export default function Devices() {
             <Button
               as="a"
               href={AGENT_DOWNLOAD_URL}
-              target="_blank"
-              rel="noreferrer"
+              download="deckd.exe"
               variant="quiet"
               size="sm"
               leadingIcon={<Download className="h-4 w-4" />}

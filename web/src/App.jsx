@@ -24,6 +24,8 @@ const Devices = lazy(() => import('@/pages/devices/Devices'))
 const Settings = lazy(() => import('@/pages/settings/Settings'))
 const Terms = lazy(() => import('@/pages/legal/Terms'))
 const Privacy = lazy(() => import('@/pages/legal/Privacy'))
+const Signup = lazy(() => import('@/pages/signup/Signup'))
+const ConfirmSignup = lazy(() => import('@/pages/signup/ConfirmSignup'))
 
 function ProtectedShell() {
   return (
@@ -58,6 +60,8 @@ export default function App() {
               <Route path="/" element={<LandingRedesign />} />
               <Route path="/preview" element={<LandingRedesign />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/signup/confirm" element={<ConfirmSignup />} />
 
               {/* Public legal pages — reachable from onboarding + landing footer + Settings. */}
               <Route path="/legal/terms" element={<Terms />} />

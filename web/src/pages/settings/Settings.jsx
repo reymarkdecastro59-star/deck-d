@@ -28,7 +28,12 @@ import { formatDate } from '@/lib/format'
 import { useProfile } from './useProfile'
 
 const APP_VERSION = '0.1.0'
-const CONTACT_URL = '/#contact'
+// Contact email lives in Vite env so the address isn't hard-coded in source.
+// Falls back to a friendly "not configured" href if the env var is absent.
+const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL
+const CONTACT_URL = CONTACT_EMAIL
+  ? `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("DECK'D feedback")}`
+  : null
 const DOCS_URL = 'https://github.com/reymarkdecastro59-star/deck-d'
 
 export default function Settings() {
@@ -372,16 +377,26 @@ function HelpSection() {
           />
           <Row
             label="Contact"
-            hint="Bug reports, feedback, or help — we read every message."
+            hint={
+              CONTACT_URL
+                ? 'Bug reports, feedback, or help — we read every message.'
+                : 'Set VITE_CONTACT_EMAIL in web/.env.local to enable the contact link.'
+            }
             action={
-              <Button
-                as="a"
-                href={CONTACT_URL}
-                variant="secondary"
-                trailingIcon={<ExternalLink className="h-4 w-4" />}
-              >
-                Send a message
-              </Button>
+              CONTACT_URL ? (
+                <Button
+                  as="a"
+                  href={CONTACT_URL}
+                  variant="secondary"
+                  trailingIcon={<ExternalLink className="h-4 w-4" />}
+                >
+                  Send a message
+                </Button>
+              ) : (
+                <Button variant="secondary" disabled>
+                  Contact unavailable
+                </Button>
+              )
             }
           />
           <Row

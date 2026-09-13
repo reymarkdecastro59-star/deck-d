@@ -1,68 +1,60 @@
-import { useCallback, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { Bell, Search } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { Search } from 'lucide-react'
 import { IconButton } from '@/app/ui/IconButton'
 import { GlobalSearch } from './GlobalSearch'
 import { useGlobalSearchShortcut } from './useGlobalSearchShortcut'
+import { NotificationsMenu } from './NotificationsMenu'
 import { UserMenu } from './UserMenu'
-
-const TITLES = [
-  { match: /^\/dashboard/, title: 'Dashboard' },
-  { match: /^\/library/, title: 'Library' },
-  { match: /^\/sessions/, title: 'Sessions' },
-  { match: /^\/recommendations/, title: 'Recommendations' },
-  { match: /^\/stats/, title: 'Stats' },
-  { match: /^\/devices/, title: 'Devices' },
-  { match: /^\/settings/, title: 'Settings' },
-]
-
-function resolveTitle(pathname) {
-  const hit = TITLES.find((t) => t.match.test(pathname))
-  return hit?.title ?? ''
-}
 
 export function TopBar() {
   const [searchOpen, setSearchOpen] = useState(false)
-  // Stable handlers so useGlobalSearchShortcut's effect doesn't
-  // re-subscribe on every render.
   const openSearch = useCallback(() => setSearchOpen(true), [])
   const closeSearch = useCallback(() => setSearchOpen(false), [])
   useGlobalSearchShortcut(openSearch)
 
-  const { pathname } = useLocation()
-  const title = useMemo(() => resolveTitle(pathname), [pathname])
+  // Detect the correct shortcut hint for the platform so we don't lie to
+  // Windows/Linux users about ⌘. The shortcut hook accepts both.
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 
   return (
     <>
       <header
-        className="flex shrink-0 items-center gap-3 border-b border-[var(--app-border)] bg-[var(--app-bg)] px-6"
+        className="relative flex shrink-0 items-center gap-4 px-8"
         style={{ height: 'var(--app-topbar-h)', zIndex: 'var(--app-z-topbar)' }}
       >
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[15px] font-medium text-[var(--app-fg)]">{title}</h1>
-        </div>
+        {/* Left: intentionally empty. Page title lives in the page's own
+            header (PageHeader) — repeating it in the top bar was noisy.
+            Spacer keeps the search anchored to the right on wide screens. */}
+        <div className="flex-1" />
 
+        {/* Global search — pill-shaped, elevated surface, hairline border
+            only. Focus state uses the accent ring. */}
         <button
           type="button"
           onClick={openSearch}
-          className="hidden h-9 min-w-[260px] items-center gap-2 rounded-[var(--app-r-2)] border border-[var(--app-border)] bg-[var(--app-bg-2)] px-3 text-[13px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-bg-3)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-accent)] md:flex"
+          className="hidden h-10 min-w-[320px] items-center gap-2.5 rounded-[var(--app-r-pill)] border border-[var(--app-border)] bg-[var(--app-bg-2)] px-4 text-[13px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-accent)] md:flex"
+          aria-label="Open search"
         >
-          <Search className="h-4 w-4" strokeWidth={1.75} />
+          <Search className="h-4 w-4 text-[var(--app-fg-dim)]" strokeWidth={1.75} />
           <span className="flex-1 text-left">Search games, sessions…</span>
-          <kbd className="app-num rounded border border-[var(--app-border)] bg-[var(--app-bg-3)] px-1.5 py-0.5 text-[11px]">
-            ⌘K
-          </kbd>
+          <span className="app-num inline-flex items-center gap-1 text-[11px] text-[var(--app-fg-dim)]">
+            <kbd className="rounded border border-[var(--app-hairline)] bg-[var(--app-bg-3)] px-1.5 py-0.5">
+              {isMac ? '⌘' : 'Ctrl'}
+            </kbd>
+            <kbd className="rounded border border-[var(--app-hairline)] bg-[var(--app-bg-3)] px-1.5 py-0.5">
+              K
+            </kbd>
+          </span>
         </button>
 
         <IconButton size="sm" label="Open search" className="md:hidden" onClick={openSearch}>
           <Search />
         </IconButton>
 
-        <IconButton size="sm" label="Notifications">
-          <Bell />
-        </IconButton>
-
-        <UserMenu />
+        <div className="flex items-center gap-2">
+          <NotificationsMenu />
+          <UserMenu />
+        </div>
       </header>
 
       <GlobalSearch open={searchOpen} onClose={closeSearch} />
