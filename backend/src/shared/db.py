@@ -22,17 +22,24 @@ def get_trending_daily() -> Optional[dict]:
     return resp.get("Item")
 
 
-def put_trending_daily(games: list, updated_at: str, ttl: int) -> None:
-    """Write (or overwrite) the daily trending cache item."""
-    get_table().put_item(
-        Item={
-            "pk": _TRENDING_PK,
-            "sk": _TRENDING_SK,
-            "games": games,
-            "updated_at": updated_at,
-            "ttl": ttl,
-        }
-    )
+def put_trending_daily(games: list, updated_at: str, ttl: Optional[int] = None) -> None:
+    """Write (or overwrite) the daily trending cache item.
+
+    The item is written WITHOUT a TTL by default. It is replaced every day by
+    the cron, and on a RAWG failure the cron deliberately keeps the old item
+    so Trending can serve stale data (with its `updated_at`) instead of going
+    blank. A TTL defeated that: one missed refresh let DynamoDB delete the
+    item (bug B8). `ttl` stays optional only for callers/tests that need it.
+    """
+    item = {
+        "pk": _TRENDING_PK,
+        "sk": _TRENDING_SK,
+        "games": games,
+        "updated_at": updated_at,
+    }
+    if ttl is not None:
+        item["ttl"] = ttl
+    get_table().put_item(Item=item)
 
 
 # ---------------------------------------------------------------------------

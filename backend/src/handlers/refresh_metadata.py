@@ -13,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 _DAY = 86_400
 _RAWG_BASE = "https://api.rawg.io/api"
-# TTL for the trending item: 26 hours so a cron failure still serves stale data.
-_TRENDING_TTL_SEC = 26 * 3600
 # Keep the top N results after filtering.
 _TRENDING_LIMIT = 20
 
@@ -104,12 +102,12 @@ def _refresh_trending() -> None:
         )
         return
 
-    now = int(time.time())
     updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ttl = now + _TRENDING_TTL_SEC
 
-    put_trending_daily(games=games, updated_at=updated_at, ttl=ttl)
-    logger.info("trending_refresh_complete count=%d ttl=%d", len(games), ttl)
+    # No TTL: the item is overwritten daily, and on failure the stale item must
+    # keep serving (consumers show its age from `updated_at`). See B8.
+    put_trending_daily(games=games, updated_at=updated_at)
+    logger.info("trending_refresh_complete count=%d updated_at=%s", len(games), updated_at)
 
 
 def handler(event: dict, context) -> dict:

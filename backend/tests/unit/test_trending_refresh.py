@@ -71,7 +71,7 @@ def test_writes_trending_item_on_success(ddb_table, monkeypatch):
     assert len(item["games"]) == 5
     assert item["games"][0]["slug"] == "trending-game-0"
     assert "updated_at" in item
-    assert "ttl" in item
+    assert "ttl" not in item  # B8: trending must never expire on its own
 
 
 # ---------------------------------------------------------------------------
@@ -134,30 +134,35 @@ def test_does_not_overwrite_on_network_error(ddb_table, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# (d) TTL is set roughly 26 hours in the future
+# (d) B8 regression: the trending item never carries a TTL, and a successful
+#     refresh clears a TTL left behind by older deployments.
 # ---------------------------------------------------------------------------
 
-def test_ttl_is_26h_from_write(ddb_table, monkeypatch):
+def test_refresh_removes_legacy_ttl(ddb_table, monkeypatch):
+    # An item written by the old code: TTL already in the past.
+    db_module.put_trending_daily(
+        games=[{"name": "Old", "slug": "old"}],
+        updated_at="2026-09-01T03:00:00Z",
+        ttl=int(time.time()) - 60,
+    )
     mock_resp = MagicMock()
     mock_resp.ok = True
     mock_resp.json.return_value = _rawg_trending_payload(count=3)
 
-    before = int(time.time())
     with patch.object(refresh_module.requests, "get", return_value=mock_resp):
         monkeypatch.setattr(refresh_module, "fetch_metadata", MagicMock(return_value={
             "game_exe": "dummy.exe", "resolution_failed": False,
         }))
         refresh_module.handler({}, None)
-    after = int(time.time())
 
     item = db_module.get_trending_daily()
-    ttl = int(item["ttl"])
-    expected_low = before + 26 * 3600
-    expected_high = after + 26 * 3600
+    assert "ttl" not in item
+    assert len(item["games"]) == 3
 
-    assert expected_low <= ttl <= expected_high, (
-        f"TTL {ttl} not in [{expected_low}, {expected_high}]"
-    )
+
+def test_put_trending_daily_defaults_to_no_ttl(ddb_table):
+    db_module.put_trending_daily(games=[], updated_at="2026-10-04T03:00:00Z")
+    assert "ttl" not in db_module.get_trending_daily()
 
 
 # ---------------------------------------------------------------------------
