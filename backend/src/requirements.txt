@@ -1,4 +1,6 @@
-boto3>=1.34.0
+# boto3/botocore are NOT bundled: the Lambda python3.11 runtime provides them,
+# and bundling them roughly doubled the deploy package. Tests get boto3 from
+# requirements-dev.txt.
 aws-lambda-powertools>=2.40.0
 pydantic[email]>=2.0
 requests>=2.31.0
