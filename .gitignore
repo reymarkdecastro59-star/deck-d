@@ -1,4 +1,4 @@
-﻿# Agent config (contains live API URL + Cognito IDs - keep local)
+# Agent config (contains live API URL + Cognito IDs - keep local)
 agent/config.py
 
 __pycache__/
@@ -22,10 +22,9 @@ Thumbs.db
 web/public/downloads/
 agent/build/
 agent/dist/
-agent/deckd.spec
 
-# Large binary artifacts served locally by Vite — not part of source
-web/public/downloads/
-agent/build/
-agent/dist/
-agent/deckd.spec
+# Local tool output and crash dumps (never source)
+.playwright-mcp/
+graphify-out/
+rivemcp-stderr.log
+*.stackdump
