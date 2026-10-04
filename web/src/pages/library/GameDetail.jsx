@@ -1,24 +1,30 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Calendar, Gamepad2, Info } from 'lucide-react'
+import { ArrowLeft, Gamepad2 } from 'lucide-react'
 import { Button } from '@/app/ui/Button'
-import { Card } from '@/app/ui/Card'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { EmptyState } from '@/app/ui/EmptyState'
+import { SectionHead } from '@/app/ui/SectionHead'
 import { Skeleton } from '@/app/ui/Skeleton'
-import { safeImageUrl } from '@/app/ui/safeUrl'
-import { BarChart, KPITile } from '@/app/viz'
+import { StatsStrip } from '@/app/ui/StatsStrip'
+import { coverBackgroundStyle } from '@/app/ui/safeUrl'
+import { BarChart } from '@/app/viz'
 import { getLabelColor } from '@/app/design/tokens'
 import { formatDate, formatDuration, formatHours } from '@/lib/format'
 import { dailyBuckets } from '@/pages/stats/aggregations'
+import { CoverFallback } from './CoverFallback'
 import { useGameDetail } from './useGameDetail'
 
+/**
+ * Game Detail — an editorial media-detail page, not a mini-dashboard.
+ * The cover artwork carries visual identity on the left; the title,
+ * quick stats strip, and session history live on the right / below.
+ * No card wrappers, no giant hero photo washing out the page.
+ */
 export default function GameDetail() {
   const { key } = useParams()
   const { game, halfLifeDays, sessions, loading, error, notFound, reload } = useGameDetail(key)
 
-  // Called before any early-return so hook order stays stable across
-  // loading/notFound/error branches.
   const { buckets, weekTotal } = useMemo(() => {
     const b = dailyBuckets(sessions, 7)
     return { buckets: b, weekTotal: b.reduce((s, x) => s + x.value, 0) }
@@ -28,7 +34,7 @@ export default function GameDetail() {
 
   if (notFound) {
     return (
-      <div className="mx-auto max-w-[1280px] px-8 py-8">
+      <Container>
         <BackLink />
         <div className="mt-6">
           <EmptyState
@@ -42,137 +48,98 @@ export default function GameDetail() {
             }
           />
         </div>
-      </div>
+      </Container>
     )
   }
 
   if (error) {
     return (
-      <div className="mx-auto max-w-[1280px] px-8 py-8">
+      <Container>
         <BackLink />
         <div className="mt-6">
           <ErrorState title="We couldn't load this game" description={error} onRetry={reload} />
         </div>
-      </div>
+      </Container>
     )
   }
 
+  const cover = coverBackgroundStyle(game.background_image)
+  const name = game.game || 'Untitled'
   const rawSumHours = (game.raw_sum_sec ?? 0) / 3600
   const overlapStrippedHours = (game.overlap_stripped_sec ?? 0) / 3600
 
+  const strip = [
+    { label: 'Hours', value: formatHours(game.total_hours), unit: 'h' },
+    { label: 'Momentum', value: formatHours(game.decay_hours), unit: 'h' },
+    { label: 'Sessions', value: sessions.length.toLocaleString() },
+    { label: 'Raw sum', value: formatHours(rawSumHours), unit: 'h' },
+  ]
+
   return (
-    <div className="mx-auto max-w-[1280px] space-y-8 px-8 py-8">
+    <Container>
       <BackLink />
 
-      <section className="relative overflow-hidden rounded-[var(--app-r-3)] border border-[var(--app-border)] bg-[var(--app-bg-2)]">
-        {safeImageUrl(game.background_image) && (
-          <>
-            <div
-              aria-hidden
-              className="absolute inset-0 bg-cover bg-center opacity-55"
-              style={{ backgroundImage: `url(${safeImageUrl(game.background_image)})` }}
-            />
-            <div
-              aria-hidden
-              className="absolute inset-0"
-              style={{
-                background:
-                  'linear-gradient(90deg, var(--app-bg-2) 0%, var(--app-bg-2) 44%, rgba(10,11,24,0.6) 72%, rgba(10,11,24,0) 100%)',
-              }}
-            />
-          </>
-        )}
-        <div className="relative flex min-h-[200px] items-end justify-between gap-8 p-8 lg:p-10">
-          <div className="max-w-[62%]">
-            <div className="app-eyebrow text-[var(--app-fg-muted)]">Game</div>
-            <h1
-              className="mt-2 font-normal tracking-tight text-[var(--app-fg-strong)]"
-              style={{ fontSize: 'clamp(28px, 3.2vw, 44px)', lineHeight: 1.05 }}
-            >
-              {game.game}
-            </h1>
-            <p className="mt-3 text-[13.5px] text-[var(--app-fg-muted)]">
-              {sessions.length.toLocaleString()} session{sessions.length === 1 ? '' : 's'} tracked
-              {game.rawg_id != null && <span className="app-num"> · rawg #{game.rawg_id}</span>}
-            </p>
-          </div>
+      <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-[minmax(160px,200px)_1fr] md:gap-10">
+        <div
+          aria-hidden
+          className="relative aspect-[3/4] overflow-hidden rounded-[var(--app-r-2)] bg-[var(--app-bg-3)]"
+          style={cover}
+        >
+          {!cover && <CoverFallback name={name} />}
         </div>
-      </section>
+        <div className="min-w-0 self-end">
+          <div className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">Game</div>
+          <h1
+            className="mt-2 font-normal leading-[1.05] tracking-tight text-[var(--app-fg-strong)]"
+            style={{ fontSize: 'clamp(28px, 3vw, 40px)' }}
+          >
+            {name}
+          </h1>
+          <p className="app-num mt-3 text-[13px] text-[var(--app-fg-muted)]">
+            {sessions.length.toLocaleString()} session{sessions.length === 1 ? '' : 's'} tracked
+            {game.rawg_id != null && <span> · rawg #{game.rawg_id}</span>}
+            {halfLifeDays && <span> · {halfLifeDays}-day half-life</span>}
+          </p>
+          <p className="mt-4 max-w-[560px] text-[12.5px] leading-relaxed text-[var(--app-fg-dim)]">
+            Wall-clock union across all recorded sessions — overlap stripped, nothing
+            double-counted.
+            {overlapStrippedHours > 0 &&
+              ` ${formatHours(overlapStrippedHours)}h stripped by overlap dedupe.`}
+          </p>
+        </div>
+      </div>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KPITile
-          label="Hours played"
-          value={formatHours(game.total_hours)}
-          unit="h"
-          footnote="Wall-clock union — overlap stripped."
-        />
-        <KPITile
-          label="Momentum"
-          value={formatHours(game.decay_hours)}
-          unit="h"
-          footnote={
-            halfLifeDays ? `Decay-weighted, ${halfLifeDays}-day half-life.` : 'Decay-weighted.'
-          }
-        />
-        <KPITile
-          label="Sessions"
-          value={sessions.length.toLocaleString()}
-          footnote="Every recorded play for this title."
-        />
-        <KPITile
-          label="Raw sum"
-          value={formatHours(rawSumHours)}
-          unit="h"
-          footnote={
-            overlapStrippedHours > 0
-              ? `${formatHours(overlapStrippedHours)}h stripped by overlap dedupe.`
-              : 'No overlap deduped — sessions never ran concurrently.'
-          }
-        />
-      </section>
+      <StatsStrip items={strip} className="mt-10" />
 
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card padding="none" className="overflow-hidden lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-[var(--app-border)] p-5">
-            <div>
-              <div className="app-eyebrow text-[var(--app-fg-muted)]">Sessions</div>
-              <p className="mt-1 text-[13px] text-[var(--app-fg-muted)]">
-                Newest first. Manage all sessions in the Sessions view.
-              </p>
-            </div>
-            <Link
-              to="/sessions"
-              className="text-[13px] text-[var(--app-fg-muted)] transition-colors hover:text-[var(--app-fg)]"
-            >
-              All sessions →
-            </Link>
-          </div>
+      <div className="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_320px] lg:gap-14">
+        <section>
+          <SectionHead
+            eyebrow="Sessions"
+            title={sessions.length === 0 ? 'No sessions yet' : 'Newest first'}
+            viewAllTo="/sessions"
+          />
           {sessions.length === 0 ? (
-            <div className="p-8 text-[13.5px] text-[var(--app-fg-muted)]">
+            <p className="mt-4 text-[13.5px] text-[var(--app-fg-muted)]">
               No sessions found for this game. This can happen if the tracker's first record is
               still syncing.
-            </div>
+            </p>
           ) : (
-            <ul className="divide-y divide-[var(--app-hairline)]">
+            <ul className="mt-4 divide-y divide-[var(--app-hairline)]">
               {sessions.slice(0, 12).map((s) => {
                 const dot = getLabelColor(s.label)
                 return (
-                  <li key={s.session_id} className="flex items-center gap-3 p-4">
+                  <li key={s.session_id} className="flex items-center gap-3.5 py-3">
                     <span
                       aria-hidden
                       className="h-1.5 w-1.5 shrink-0 rounded-full"
                       style={{ background: dot }}
-                    />
-                    <Calendar
-                      className="h-4 w-4 shrink-0 text-[var(--app-fg-dim)]"
-                      strokeWidth={1.75}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] text-[var(--app-fg)]">
                         {formatDate(s.started_at, 'time')}
                       </div>
                       {s.label && (
-                        <div className="mt-0.5 text-[11.5px] capitalize text-[var(--app-fg-muted)]">
+                        <div className="mt-0.5 text-[11px] capitalize text-[var(--app-fg-dim)]">
                           {s.label}
                         </div>
                       )}
@@ -185,40 +152,30 @@ export default function GameDetail() {
               })}
             </ul>
           )}
-        </Card>
+        </section>
 
-        <div className="space-y-6">
-          <Card>
-            <div>
-              <div className="app-eyebrow text-[var(--app-fg-muted)]">This week</div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span
-                  className="app-num leading-none text-[var(--app-fg-strong)]"
-                  style={{ fontSize: 'clamp(22px, 1.8vw, 26px)' }}
-                >
-                  {formatHours(weekTotal)}
-                </span>
-                <span className="text-[13px] text-[var(--app-fg-muted)]">h</span>
-              </div>
-            </div>
-            <div className="mt-4">
-              <BarChart data={buckets} ariaLabel="Hours played per day, last 7 days" />
-            </div>
-          </Card>
-
-          <div className="flex items-start gap-3 rounded-[var(--app-r-3)] border border-[var(--app-border)] bg-[var(--app-bg-2)] p-4">
-            <Info
-              className="mt-0.5 h-4 w-4 shrink-0 text-[var(--app-fg-muted)]"
-              strokeWidth={1.75}
-            />
-            <p className="text-[12.5px] leading-relaxed text-[var(--app-fg-muted)]">
-              Sessions are matched by title. Two launchers using the same name (Steam and Epic)
-              count as one game; different names may show up as siblings until RAWG metadata
-              resolves.
-            </p>
+        <aside>
+          <SectionHead eyebrow="This week" title={`${formatHours(weekTotal)} h`} />
+          <div className="mt-4">
+            <BarChart data={buckets} ariaLabel="Hours played per day, last 7 days" />
           </div>
-        </div>
-      </section>
+          <p className="mt-6 text-[11.5px] leading-relaxed text-[var(--app-fg-dim)]">
+            Sessions are matched by title. Two launchers using the same name (Steam and Epic) count
+            as one game; different names may show up as siblings until RAWG metadata resolves.
+          </p>
+        </aside>
+      </div>
+    </Container>
+  )
+}
+
+function Container({ children }) {
+  return (
+    <div
+      className="mx-auto w-full px-6 py-8 lg:px-10"
+      style={{ maxWidth: 'var(--app-content-max)' }}
+    >
+      {children}
     </div>
   )
 }
@@ -227,35 +184,46 @@ function BackLink() {
   return (
     <Link
       to="/library"
-      className="inline-flex items-center gap-1.5 text-[13px] text-[var(--app-fg-muted)] transition-colors hover:text-[var(--app-fg)]"
+      className="inline-flex items-center gap-1.5 text-[12.5px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:text-[var(--app-fg)]"
     >
       <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-      Back to library
+      Library
     </Link>
   )
 }
 
 function GameDetailSkeleton() {
   return (
-    <div className="mx-auto max-w-[1280px] space-y-8 px-8 py-8">
-      <Skeleton className="h-4 w-32" />
-      <Skeleton className="h-[200px] w-full" />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <Container>
+      <Skeleton className="h-4 w-24" />
+      <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-[minmax(160px,200px)_1fr] md:gap-10">
+        <Skeleton className="aspect-[3/4]" />
+        <div className="space-y-3 self-end">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-9 w-3/4" />
+          <Skeleton className="h-3 w-1/2" />
+          <Skeleton className="h-2.5 w-full max-w-[420px]" />
+        </div>
+      </div>
+      <div className="mt-10 grid grid-cols-2 gap-y-6 md:flex md:gap-0">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24" />
+          <div key={i} className="min-w-0 md:flex-1 md:px-6">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="mt-3 h-2.5 w-16" />
+          </div>
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-3 lg:col-span-2">
+      <div className="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_320px] lg:gap-14">
+        <div className="space-y-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-12" />
+            <Skeleton key={i} className="h-10" />
           ))}
         </div>
-        <div className="space-y-6">
-          <Skeleton className="h-32" />
-          <Skeleton className="h-20" />
+        <div>
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="mt-4 h-24" />
         </div>
       </div>
-    </div>
+    </Container>
   )
 }

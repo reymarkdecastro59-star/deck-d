@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronDown, LogOut, Settings as SettingsIcon, User as UserIcon } from 'lucide-react'
+import {
+  ChevronDown,
+  LogOut,
+  MonitorSmartphone,
+  Settings as SettingsIcon,
+  User as UserIcon,
+} from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/app/ui/cn'
 
@@ -112,6 +118,14 @@ export function UserMenu() {
                 onClick={() => {
                   setOpen(false)
                   navigate('/settings#profile')
+                }}
+              />
+              <MenuItem
+                icon={MonitorSmartphone}
+                label="Devices"
+                onClick={() => {
+                  setOpen(false)
+                  navigate('/devices')
                 }}
               />
               <MenuItem

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import LandingRedesign from '@/pages/landing/redesign/Landing'
 import Login from '@/pages/login/Login'
 import Dashboard from '@/pages/dashboard/Dashboard'
@@ -26,6 +26,9 @@ const Terms = lazy(() => import('@/pages/legal/Terms'))
 const Privacy = lazy(() => import('@/pages/legal/Privacy'))
 const Signup = lazy(() => import('@/pages/signup/Signup'))
 const ConfirmSignup = lazy(() => import('@/pages/signup/ConfirmSignup'))
+// DEV-only visual QA harness (sample data, no auth). Never in production.
+const DevPreview = import.meta.env.DEV ? lazy(() => import('@/dev/DevPreview')) : null
+const DevDownloadStep = import.meta.env.DEV ? lazy(() => import('@/dev/DownloadStepPreview')) : null
 
 function ProtectedShell() {
   return (
@@ -84,7 +87,9 @@ export default function App() {
                 <Route path="/library" element={<Library />} />
                 <Route path="/library/:key" element={<GameDetail />} />
                 <Route path="/sessions" element={<Sessions />} />
-                <Route path="/recommendations" element={<Recommendations />} />
+                <Route path="/for-you" element={<Recommendations />} />
+                {/* Old address — kept so bookmarks and notification links still land. */}
+                <Route path="/recommendations" element={<Navigate to="/for-you" replace />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/devices" element={<Devices />} />
                 <Route path="/settings" element={<Settings />} />
@@ -92,6 +97,15 @@ export default function App() {
 
               {/* Catch-all — must be last. Renders outside AppShell so it works
                   for both marketing typos and app-route typos. */}
+              {DevPreview && (
+                <Route path="/dev/preview" element={<DevPreview />}>
+                  <Route path="overview" element={<Dashboard />} />
+                </Route>
+              )}
+              {DevDownloadStep && (
+                <Route path="/dev/preview-onboarding" element={<DevDownloadStep />} />
+              )}
+
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

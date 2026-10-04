@@ -31,7 +31,10 @@ export function OfflineBanner() {
       aria-live="polite"
       className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-4"
     >
-      <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[var(--app-warn)] bg-[var(--app-warn-tint)] px-3.5 py-1.5 text-[12.5px] text-[var(--app-fg)] shadow-lg backdrop-blur">
+      <div
+        className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[var(--app-warn)] bg-[var(--app-bg-raised)] px-3.5 py-1.5 text-[12.5px] text-[var(--app-fg)]"
+        style={{ boxShadow: 'var(--app-elev-pop)' }}
+      >
         <WifiOff className="h-3.5 w-3.5 text-[var(--app-warn)]" strokeWidth={2} />
         <span>You're offline — changes won't sync until the connection returns.</span>
       </div>

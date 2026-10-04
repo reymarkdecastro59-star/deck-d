@@ -1,428 +1,266 @@
 import { useMemo } from 'react'
-import {
-  ArrowRight,
-  BarChart3,
-  Clock,
-  Download,
-  Flame,
-  Gamepad2,
-  LayoutGrid,
-  Plus,
-} from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { useAuth } from '@/auth/AuthContext'
-import { Card } from '@/app/ui/Card'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { Skeleton } from '@/app/ui/Skeleton'
-import { KPITile } from '@/app/viz'
-import { coverBackgroundStyle } from '@/app/ui/safeUrl'
-import { formatDuration, formatHours, relativeTime } from '@/lib/format'
-import { getLabelColor } from '@/app/design/tokens'
-import { useDashboard } from './useDashboard'
-import bgLanding from '@/assets/Bg_Landing.png'
-import logo from "@/assets/Deck'D.png"
+import { safeImageUrl } from '@/app/ui/safeUrl'
+import { useTracking } from '@/app/shell/trackingContext'
+import { useElapsed } from '@/app/shell/useElapsed'
+import { gameColor } from '@/lib/gameColor'
+import { gameState, lastPlayedByGame } from '@/lib/gameState'
+import { pickInsight } from '@/lib/insights'
+import { trendOf, weekSummary, weeklyByGame } from '@/lib/week'
+import { useDashboard, useNextUp } from './useDashboard'
+import {
+  ContinueShelf,
+  FirstRun,
+  HeroCard,
+  InsightPanel,
+  MomentumPanel,
+  NextUpBanner,
+  SessionsPanel,
+  WeekPanel,
+} from './OverviewModules'
 
 /**
- * Best-effort display name from an email like "reymarkdecastro59@x.com".
- * Strips trailing digits (birth-year style suffixes) and truncates to a
- * reasonable length so the greeting stays scannable. Cognito doesn't
- * carry a preferred_name claim in this app — a future profile record
- * with a real display name would replace this heuristic.
+ * Overview v2 — psychology-led daily brief (docs/brand/POST_AUTH_UX_V2_PLAN.md).
+ *
+ *   Hero (now playing / most played)  +  This week (Week Meter, play days)
+ *   Continue shelf (≤5, art-first)
+ *   This week's sessions timeline     +  Momentum
+ *   Insight (identity mirror)
+ *   Next up (peak-end finale)
+ *
+ * Everything is derived from data the API already returns; nothing invented.
  */
-function firstName(email) {
-  if (!email) return 'there'
-  const local = email.split('@')[0].replace(/[0-9]+$/, '')
-  if (!local) return 'there'
-  // Long email-prefix names ("reymarkdecastro") almost always concatenate
-  // multiple words; take the first ~7 chars as a best-guess first name.
-  const capped = local.length > 12 ? local.slice(0, 7) : local
-  return capped.charAt(0).toUpperCase() + capped.slice(1)
-}
-
-// Count unique tracked games across all recent sessions. The summary
-// endpoint gives ranked games but doesn't expose an all-time distinct
-// count separately, so we compose it here.
-function distinctGames(summary) {
-  return (summary?.games || []).length
-}
-
-// Streak: consecutive days with at least one session, ending today.
-// Simple client-side derivation from `recent` so we don't invent a
-// backend field. Returns 0 for empty input.
-function currentStreak(recent) {
-  if (!recent || recent.length === 0) return 0
-  const days = new Set(
-    recent.map((s) => {
-      const d = new Date(s.started_at * 1000)
-      return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
-    })
-  )
-  let streak = 0
-  const cursor = new Date()
-  cursor.setHours(0, 0, 0, 0)
-  while (true) {
-    const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`
-    if (!days.has(key)) break
-    streak += 1
-    cursor.setDate(cursor.getDate() - 1)
-  }
-  return streak
-}
-
 export default function Dashboard() {
-  const { email } = useAuth()
   const { summary, recent, loading, error, reload } = useDashboard()
-  const name = firstName(email)
+  const { live } = useTracking()
+  const liveElapsed = useElapsed(live?.started_at)
+  const hasData = (summary?.total_sessions ?? 0) > 0
+  const nextUp = useNextUp(!loading && !error && hasData)
 
-  // Hooks must run unconditionally, so all derivations sit above the
-  // loading / error / empty branches.
-  const streak = useMemo(() => currentStreak(recent), [recent])
+  const model = useMemo(() => buildModel(summary, recent, live), [summary, recent, live])
 
-  if (loading) return <DashboardSkeleton name={name} />
+  if (loading) return <OverviewSkeleton />
   if (error) {
     return (
-      <PageContainer>
-        <DashboardHero name={name} />
-        <ErrorState title="We couldn't load your dashboard" description={error} onRetry={reload} />
-      </PageContainer>
+      <Page>
+        <Greeting />
+        <ErrorState title="We couldn't load your overview" description={error} onRetry={reload} />
+      </Page>
     )
   }
 
-  const totalSessions = summary?.total_sessions ?? 0
-  const isEmpty = totalSessions === 0
-  const games = distinctGames(summary)
-  const topGames = (summary?.games || []).slice(0, 5)
+  if (!hasData) {
+    return (
+      <Page>
+        <div className="flex flex-col gap-3 pb-8">
+          <h1 className="text-[34px] font-semibold leading-tight tracking-[-0.03em] text-[var(--app-fg-strong)] sm:text-[44px]">
+            <span className="sr-only">Overview: </span>Let&apos;s record your first session.
+          </h1>
+          <p className="max-w-[640px] text-[16px] leading-[1.55] text-[var(--app-fg-muted)]">
+            DECK&apos;D builds your history from the games you actually play, then uses it to
+            suggest what to play next.
+          </p>
+        </div>
+        <FirstRun />
+      </Page>
+    )
+  }
+
+  const { week, heroGame, continueItems, momentumRows, gamesByName, lastPlayed, perGame } = model
 
   return (
-    <PageContainer>
-      <DashboardHero name={name} />
+    <Page ambient={live ? (gamesByName.get(live.game_name) ?? live.game_name) : heroGame}>
+      <Greeting />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KPITile
-          icon={<Gamepad2 className="h-4 w-4" strokeWidth={1.75} />}
-          label="Total Playtime"
-          value={isEmpty ? null : formatHours(summary.total_hours)}
-          unit="h"
-          footnote={isEmpty ? 'No sessions yet' : 'Overlap stripped — nothing double-counted.'}
+      <div className="flex flex-wrap items-stretch gap-6">
+        <HeroCard
+          live={live}
+          liveElapsed={liveElapsed}
+          game={live ? gamesByName.get(live.game_name) : heroGame}
+          weekHours={heroGame ? (perGame.get(heroGame.game)?.thisWeek ?? 0) : 0}
+          lastPlayed={heroGame ? lastPlayed.get(heroGame.game) : null}
         />
-        <KPITile
-          icon={<BarChart3 className="h-4 w-4" strokeWidth={1.75} />}
-          label="Sessions"
-          value={isEmpty ? null : totalSessions.toLocaleString()}
-          footnote={
-            isEmpty ? 'Nothing recorded' : 'Every recorded play — manual or from the tracker.'
-          }
-        />
-        <KPITile
-          icon={<LayoutGrid className="h-4 w-4" strokeWidth={1.75} />}
-          label="Games Played"
-          value={games === 0 ? null : games.toLocaleString()}
-          footnote={games === 0 ? 'No tracked games' : 'Distinct titles with a resolved match.'}
-        />
-        <KPITile
-          icon={<Flame className="h-4 w-4" strokeWidth={1.75} />}
-          label="Current Streak"
-          value={streak === 0 ? null : streak}
-          unit={streak === 1 ? 'day' : 'days'}
-          footnote={
-            streak === 0 ? 'Start playing to build your streak' : 'Consecutive days ending today.'
-          }
-        />
-      </section>
+        <WeekPanel week={week} />
+      </div>
 
-      {isEmpty ? <GetStartedCard /> : null}
+      <ContinueShelf items={continueItems} />
 
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <RecentSessionsPanel recent={recent} isEmpty={isEmpty} />
-        <MostPlayedGamesPanel topGames={topGames} isEmpty={games === 0} />
-      </section>
-    </PageContainer>
+      <div className="flex flex-wrap gap-6 pt-12">
+        <SessionsPanel week={week} gamesByName={gamesByName} live={live} latest={recent[0]} />
+        <MomentumPanel rows={momentumRows} />
+      </div>
+
+      <InsightPanel insight={model.insight} />
+
+      {nextUp.loading ? (
+        <Skeleton className="mt-6 h-[300px] rounded-[var(--app-r-art)]" />
+      ) : (
+        <NextUpBanner pick={nextUp.pick} />
+      )}
+
+      <p className="app-wt-small mt-12 text-[13px] text-[var(--app-fg-muted)]">
+        Game data and images from{' '}
+        <a
+          href="https://rawg.io"
+          target="_blank"
+          rel="noreferrer"
+          className="underline underline-offset-[3px] hover:text-[var(--app-fg)]"
+        >
+          RAWG
+        </a>
+        .
+      </p>
+    </Page>
   )
 }
 
-// ─── Layout primitives ─────────────────────────────────────────────
+/* ─── model ───────────────────────────────────────────────────────── */
 
-function PageContainer({ children }) {
+function buildModel(summary, recent, live) {
+  const now = Date.now()
+  const games = summary?.games ?? [] // already ordered by momentum (decay) desc
+  const gamesByName = new Map(games.filter((g) => g?.game).map((g) => [g.game, g]))
+  const lastPlayed = lastPlayedByGame(recent)
+  const perGame = weeklyByGame(recent)
+  const week = weekSummary(recent)
+
+  const stateOf = (g) => gameState(lastPlayed.get(g.game), now)
+  const trendFor = (g) => {
+    const w = perGame.get(g.game)
+    return w ? trendOf(w.thisWeek, w.lastWeek) : 'flat'
+  }
+
+  // Hero = most played this week; falls back to top momentum when the week is empty.
+  const byWeek = [...games].sort(
+    (a, b) => (perGame.get(b.game)?.thisWeek ?? 0) - (perGame.get(a.game)?.thisWeek ?? 0)
+  )
+  const heroGame =
+    (perGame.get(byWeek[0]?.game)?.thisWeek ?? 0) > 0 ? byWeek[0] : (games[0] ?? null)
+  const heroName = live?.game_name ?? heroGame?.game
+
+  const continueItems = games
+    .filter((g) => g.game !== heroName && stateOf(g) !== 'dormant')
+    .slice(0, 5)
+    .map((g) => ({
+      game: g,
+      state: stateOf(g),
+      thisWeek: perGame.get(g.game)?.thisWeek ?? 0,
+      trend: trendFor(g),
+      lastPlayed: lastPlayed.get(g.game),
+    }))
+
+  const momentumRows = games
+    .slice(0, 5)
+    .map((g) => ({ game: g, state: stateOf(g), trend: trendFor(g) }))
+
+  return {
+    week,
+    heroGame,
+    continueItems,
+    momentumRows,
+    gamesByName,
+    lastPlayed,
+    perGame,
+    insight: pickInsight(recent, now),
+  }
+}
+
+/* ─── layout ──────────────────────────────────────────────────────── */
+
+function Page({ children, ambient }) {
+  return (
+    <div className="relative">
+      {ambient && <AmbientTint game={ambient} />}
+      <div className="relative mx-auto w-full max-w-[1600px] px-4 pb-16 pt-2 sm:px-6 lg:px-10">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Art-derived atmosphere behind the top of the page (brand amendment: colour
+ * from game art is allowed; decorative gradients are not). Uses the hero art
+ * itself, heavily blurred, until the backend ships a dominant colour (B11).
+ */
+function AmbientTint({ game }) {
+  const url = safeImageUrl(game?.background_image)
   return (
     <div
-      className="mx-auto w-full space-y-8 px-8 py-8 lg:px-10"
-      style={{ maxWidth: 'var(--app-content-max)' }}
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 top-0 h-[640px] overflow-hidden"
+      style={{
+        opacity: 'var(--app-amb-opacity)',
+        // Fade in from the top bar edge and out by the shelf: no hard seam.
+        maskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, transparent 100%)',
+      }}
     >
-      {children}
-    </div>
-  )
-}
-
-// ─── Hero ──────────────────────────────────────────────────────────
-
-function DashboardHero({ name }) {
-  return (
-    <section className="relative isolate overflow-hidden rounded-[var(--app-r-4)] border border-[var(--app-border)] bg-[var(--app-bg-2)]">
-      {/* Landing photography anchored to the right, masked toward the
-          left so it never touches the headline. Low saturation + heavy
-          fade keeps it environmental, not decorative. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 hidden w-[62%] md:block"
-      >
+      {url ? (
         <img
-          src={bgLanding}
+          src={url}
           alt=""
-          className="h-full w-full object-cover object-right"
-          style={{
-            opacity: 0.45,
-            filter: 'saturate(0.55) brightness(0.85)',
-            maskImage: 'linear-gradient(to left, black 40%, rgba(0,0,0,0.5) 70%, transparent 100%)',
-            WebkitMaskImage:
-              'linear-gradient(to left, black 40%, rgba(0,0,0,0.5) 70%, transparent 100%)',
-          }}
-        />
-      </div>
-
-      {/* Right-edge microcopy — mirrors landing's editorial voice. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute right-8 top-8 hidden text-right text-[10px] uppercase leading-[1.6] tracking-[0.28em] text-[var(--app-fg-muted)] lg:block"
-        style={{ fontFamily: 'var(--app-font-display)' }}
-      >
-        Games
-        <br />
-        Build a
-        <br />
-        Brighter You
-      </div>
-
-      <div className="relative z-10 px-8 py-10 lg:px-10 lg:py-12">
-        <div
-          className="app-eyebrow text-[10.5px] text-[var(--app-fg-muted)]"
-          style={{ letterSpacing: '0.22em' }}
-        >
-          Dashboard
-        </div>
-        <h1
-          className="mt-4 font-normal leading-[1.05] tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(32px, 3.6vw, 44px)' }}
-        >
-          Welcome back, {name}.
-        </h1>
-        <p className="mt-3 max-w-[540px] text-[14px] leading-relaxed text-[var(--app-fg-muted)]">
-          Track your games, understand your play, and discover what deserves your time next.
-        </p>
-      </div>
-    </section>
-  )
-}
-
-// ─── Get Started (empty dashboard) ────────────────────────────────
-
-function GetStartedCard() {
-  return (
-    <section className="relative isolate overflow-hidden rounded-[var(--app-r-4)] border border-[var(--app-border)] bg-[var(--app-bg-2)]">
-      {/* Right-side brand object — official DECK'D mark scaled up as an
-          atmospheric element. Sits at low opacity so it complements the
-          copy rather than competing with it. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 hidden w-[52%] items-center justify-end md:flex"
-      >
-        <img
-          src={logo}
-          alt=""
-          className="h-[260px] max-h-full select-none pr-10 lg:h-[300px]"
-          style={{
-            opacity: 0.9,
-            filter: 'drop-shadow(0 24px 60px rgba(0,0,0,0.55))',
-          }}
-          draggable={false}
-        />
-      </div>
-
-      <div
-        aria-hidden
-        className="pointer-events-none absolute right-8 top-8 hidden text-right text-[10px] uppercase leading-[1.6] tracking-[0.28em] text-[var(--app-fg-muted)] lg:block"
-        style={{ fontFamily: 'var(--app-font-display)' }}
-      >
-        Track
-        <br />
-        Discover
-        <br />
-        Improve
-      </div>
-
-      <div className="relative z-10 max-w-[560px] px-8 py-10 lg:px-10 lg:py-12">
-        <div
-          className="app-eyebrow text-[10.5px] text-[var(--app-fg-muted)]"
-          style={{ letterSpacing: '0.22em' }}
-        >
-          Get Started
-        </div>
-        <h2
-          className="mt-3 font-normal leading-[1.1] tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(24px, 2.2vw, 30px)' }}
-        >
-          Your first session starts here.
-        </h2>
-        <p className="mt-3 text-[14px] leading-relaxed text-[var(--app-fg-muted)]">
-          DECK&apos;D shows you the calm truth about your gaming habits. Install the tracker to
-          automatically capture your play sessions, or log one manually.
-        </p>
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Link
-            to="/devices"
-            className="inline-flex h-10 items-center gap-2 rounded-[var(--app-r-2)] bg-[var(--app-accent)] px-4 text-[13.5px] font-medium text-white transition-colors [transition-duration:var(--app-dur-1)] hover:bg-[var(--app-accent-hi)]"
-          >
-            <Download className="h-4 w-4" strokeWidth={2} />
-            Install tracker
-          </Link>
-          <Link
-            to="/sessions"
-            className="inline-flex h-10 items-center gap-1.5 rounded-[var(--app-r-2)] px-3 text-[13.5px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:text-[var(--app-fg)]"
-          >
-            Log a session manually
-            <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
-          </Link>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── Recent Sessions panel ────────────────────────────────────────
-
-function RecentSessionsPanel({ recent, isEmpty }) {
-  return (
-    <Card padding="none" className="overflow-hidden">
-      <PanelHeader title="Recent Sessions" to="/sessions" />
-      {isEmpty || recent.length === 0 ? (
-        <PanelEmpty
-          icon={<Clock className="h-6 w-6" strokeWidth={1.5} />}
-          title="No sessions yet"
-          description="Once you start playing, your recent sessions will appear here."
+          className="h-full w-full scale-125 object-cover blur-[90px] saturate-150"
         />
       ) : (
-        <ul className="divide-y divide-[var(--app-hairline)]">
-          {recent.slice(0, 6).map((s) => {
-            const dot = getLabelColor(s.label)
-            return (
-              <li key={s.session_id} className="flex items-center gap-3 px-5 py-3.5">
-                <span
-                  aria-hidden
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ background: dot }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] text-[var(--app-fg)]">{s.game_name}</div>
-                  <div className="app-num mt-0.5 text-[11.5px] text-[var(--app-fg-dim)]">
-                    {relativeTime(s.started_at)} · {formatDuration(s.duration_sec)}
-                  </div>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </Card>
-  )
-}
-
-// ─── Most Played Games panel ──────────────────────────────────────
-
-function MostPlayedGamesPanel({ topGames, isEmpty }) {
-  return (
-    <Card padding="none" className="overflow-hidden">
-      <PanelHeader title="Most Played Games" to="/library" />
-      {isEmpty ? (
-        <PanelEmpty
-          icon={<LayoutGrid className="h-6 w-6" strokeWidth={1.5} />}
-          title="No games yet"
-          description="Your most played games will appear here after DECK'D records some sessions."
+        <div
+          className="h-full w-full"
+          style={{
+            background: `radial-gradient(70% 90% at 30% 0%, ${gameColor(game)} 0%, transparent 70%)`,
+          }}
         />
-      ) : (
-        <ul className="divide-y divide-[var(--app-hairline)]">
-          {topGames.map((g, i) => (
-            <li
-              key={g.rawg_id ?? g.slug ?? g.game ?? i}
-              className="flex items-center gap-3 px-5 py-3"
-            >
-              <span className="app-num w-5 shrink-0 text-right text-[12px] text-[var(--app-fg-dim)]">
-                {i + 1}
-              </span>
-              <div
-                aria-hidden
-                className="h-10 w-14 shrink-0 overflow-hidden rounded-[var(--app-r-1)] border border-[var(--app-hairline)] bg-[var(--app-bg-3)]"
-                style={coverBackgroundStyle(g.background_image)}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13.5px] text-[var(--app-fg)]">{g.game}</div>
-              </div>
-              <div className="app-num shrink-0 text-[13px] text-[var(--app-fg-strong)]">
-                {formatHours(g.total_hours)}
-                <span className="text-[11px] text-[var(--app-fg-muted)]"> h</span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
-  )
-}
-
-function PanelHeader({ title, to }) {
-  return (
-    <div className="flex items-center justify-between px-5 py-4">
-      <h2 className="text-[15px] font-medium text-[var(--app-fg-strong)]">{title}</h2>
-      {to && (
-        <Link
-          to={to}
-          className="inline-flex items-center gap-1 text-[12.5px] text-[var(--app-fg-muted)] transition-colors hover:text-[var(--app-accent-hi)]"
-        >
-          View all
-          <ArrowRight className="h-3 w-3" strokeWidth={2} />
-        </Link>
       )}
     </div>
   )
 }
 
-function PanelEmpty({ icon, title, description }) {
+function isoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const day = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil(((d - yearStart) / 86_400_000 + 1) / 7)
+}
+
+function Greeting() {
+  const now = new Date()
+  const h = now.getHours()
+  const greeting =
+    h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
-      <div className="mb-3 text-[var(--app-fg-dim)]">{icon}</div>
-      <div className="text-[13.5px] font-medium text-[var(--app-fg)]">{title}</div>
-      <p className="mt-1.5 max-w-[280px] text-[12.5px] leading-relaxed text-[var(--app-fg-muted)]">
-        {description}
-      </p>
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-6 pt-2">
+      <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-[var(--app-fg-strong)] sm:text-[28px]">
+        <span className="sr-only">Overview: </span>
+        {greeting}
+      </h1>
+      <span className="app-wt-small text-[14px] text-[var(--app-fg-muted)]">
+        {now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} ·
+        Week {isoWeek(now)}
+      </span>
     </div>
   )
 }
 
-// ─── Loading skeleton ─────────────────────────────────────────────
-
-function DashboardSkeleton({ name }) {
+function OverviewSkeleton() {
   return (
-    <PageContainer>
-      <div className="rounded-[var(--app-r-4)] border border-[var(--app-border)] bg-[var(--app-bg-2)] px-8 py-10 lg:px-10 lg:py-12">
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="mt-4 h-10 w-96" />
-        <Skeleton className="mt-3 h-4 w-3/4 max-w-[440px]" />
+    <Page>
+      <Skeleton className="mb-6 mt-2 h-7 w-48" />
+      <div className="flex flex-wrap gap-6">
+        <Skeleton className="h-[400px] min-w-0 flex-[2_1_560px] rounded-[var(--app-r-art)]" />
+        <Skeleton className="h-[400px] min-w-0 flex-[1_1_320px] rounded-[var(--app-r-3)]" />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-[var(--app-r-3)] border border-[var(--app-border)] bg-[var(--app-bg-2)] p-5"
-          >
-            <Skeleton className="h-3 w-20" />
-            <Skeleton className="mt-4 h-9 w-24" />
-            <Skeleton className="mt-3 h-3 w-full" />
-          </div>
+      <Skeleton className="mb-5 mt-12 h-6 w-40" />
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="aspect-[3/4] rounded-[var(--app-r-3)]" />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Skeleton className="h-56" />
-        <Skeleton className="h-56" />
+      <div className="flex flex-wrap gap-6 pt-12">
+        <Skeleton className="h-[360px] min-w-0 flex-[7_1_520px] rounded-[var(--app-r-3)]" />
+        <Skeleton className="h-[360px] min-w-0 flex-[5_1_380px] rounded-[var(--app-r-3)]" />
       </div>
-      <span className="sr-only">Loading dashboard for {name}</span>
-    </PageContainer>
+      <span className="sr-only">Loading overview</span>
+    </Page>
   )
 }

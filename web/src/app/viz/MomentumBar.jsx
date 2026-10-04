@@ -15,10 +15,7 @@ export function MomentumBar({ value, max, className }) {
     >
       <div
         className="absolute inset-y-0 left-0 rounded-full"
-        style={{
-          width: `${pct}%`,
-          background: `linear-gradient(90deg, ${color.accentLo} 0%, ${color.accent} 100%)`,
-        }}
+        style={{ width: `${pct}%`, background: color.accent }}
       />
     </div>
   )

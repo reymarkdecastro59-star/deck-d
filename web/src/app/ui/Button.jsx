@@ -3,7 +3,7 @@ import { cn } from './cn'
 
 const VARIANTS = {
   primary:
-    'bg-[var(--app-accent)] text-white hover:bg-[var(--app-accent-hi)] active:bg-[var(--app-accent-lo)] border border-transparent',
+    'bg-[var(--app-accent)] text-[var(--app-on-accent)] font-semibold hover:bg-[var(--app-accent-hi)] active:bg-[var(--app-accent-lo)] border border-transparent',
   secondary:
     'bg-[var(--app-bg-2)] text-[var(--app-fg)] hover:bg-[var(--app-bg-3)] border border-[var(--app-border)] hover:border-[var(--app-border-strong)]',
   ghost:

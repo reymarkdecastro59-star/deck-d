@@ -1,4 +1,4 @@
-// Theme resolver — dark (default) / light / system.
+// Theme resolver — system (default) / dark / light.
 // Writes data-theme + data-motion attributes on <html>.
 
 const THEME_KEY = 'deckd.theme'
@@ -8,9 +8,9 @@ export const THEMES = ['dark', 'light', 'system']
 
 export function getStoredTheme() {
   try {
-    return localStorage.getItem(THEME_KEY) || 'dark'
+    return localStorage.getItem(THEME_KEY) || 'system'
   } catch {
-    return 'dark'
+    return 'system'
   }
 }
 
@@ -60,8 +60,16 @@ export function setMotion(pref) {
   applyMotion(pref)
 }
 
-// Call once at boot before React mounts to avoid a flash.
+// Call once at boot. index.html already applied the theme before paint;
+// this re-applies it and keeps "system" in sync when the OS theme changes.
 export function initTheme() {
   applyTheme(getStoredTheme())
   applyMotion(getStoredMotion())
+  try {
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+      if (getStoredTheme() === 'system') applyTheme('system')
+    })
+  } catch {
+    /* matchMedia unavailable */
+  }
 }

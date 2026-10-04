@@ -1,17 +1,19 @@
 import { memo } from 'react'
 import { Link } from 'react-router-dom'
-import { Gamepad2 } from 'lucide-react'
 import { cn } from '@/app/ui/cn'
 import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 import { formatHours } from '@/lib/format'
 import { gameKey } from './gameKey'
+import { CoverFallback } from './CoverFallback'
 
 function GameCardImpl({ game, className }) {
   const key = gameKey(game)
   const coverStyle = coverBackgroundStyle(game.background_image)
+  const name = game.game || 'Untitled'
   return (
     <Link
       to={`/library/${key}`}
+      title={name}
       className={cn(
         'group relative flex flex-col overflow-hidden',
         'rounded-[var(--app-r-3)] border border-[var(--app-border)] bg-[var(--app-bg-2)]',
@@ -26,11 +28,7 @@ function GameCardImpl({ game, className }) {
         className="relative aspect-[16/9] overflow-hidden bg-[var(--app-bg-3)]"
         style={coverStyle}
       >
-        {!coverStyle && (
-          <div className="absolute inset-0 flex items-center justify-center text-[var(--app-fg-dim)]">
-            <Gamepad2 className="h-6 w-6" strokeWidth={1.5} />
-          </div>
-        )}
+        {!coverStyle && <CoverFallback name={name} />}
         <div
           aria-hidden
           className="absolute inset-0"
@@ -40,7 +38,7 @@ function GameCardImpl({ game, className }) {
         />
       </div>
       <div className="p-4">
-        <div className="truncate text-[14px] font-medium text-[var(--app-fg)]">{game.game}</div>
+        <div className="truncate text-[14px] font-medium text-[var(--app-fg)]">{name}</div>
         <div className="app-num mt-2 flex items-baseline gap-3">
           <span className="text-[13px] text-[var(--app-fg-strong)]">
             {formatHours(game.total_hours)}

@@ -12,7 +12,7 @@ export function OnboardingLayout({ stepIdx, totalSteps, eyebrow, title, lede, ch
         <div className="mb-8 flex items-center gap-2">
           <span
             aria-hidden
-            className="flex h-6 w-6 items-center justify-center rounded-[6px] bg-[var(--app-accent)] text-[11px] font-semibold text-white"
+            className="flex h-6 w-6 items-center justify-center rounded-[6px] bg-[var(--app-accent)] text-[11px] font-semibold text-[var(--app-on-accent)]"
           >
             D
           </span>
@@ -44,7 +44,7 @@ export function OnboardingLayout({ stepIdx, totalSteps, eyebrow, title, lede, ch
 
       {/* Footer — actions provided by the step */}
       {footer && (
-        <footer className="bg-[var(--app-bg)]/85 sticky bottom-0 border-t border-[var(--app-border)] backdrop-blur-sm">
+        <footer className="sticky bottom-0 border-t border-[var(--app-border)] bg-[var(--app-bg)]">
           <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-4 px-8 py-4">
             {footer}
           </div>

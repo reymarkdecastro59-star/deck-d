@@ -16,7 +16,7 @@ export function Switch({ checked, onChange, disabled, label, className, id }) {
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-accent)]',
         checked
           ? 'bg-[var(--app-accent)]'
-          : 'border border-[var(--app-border)] bg-[var(--app-bg-3)]',
+          : 'border border-[var(--app-border-strong)] bg-[var(--app-bg-3)]',
         disabled && 'cursor-not-allowed opacity-40',
         className
       )}
@@ -24,7 +24,8 @@ export function Switch({ checked, onChange, disabled, label, className, id }) {
       <span
         aria-hidden
         className={cn(
-          'inline-block h-4 w-4 rounded-full bg-white shadow',
+          'inline-block h-4 w-4 rounded-full shadow',
+          checked ? 'bg-[var(--app-on-accent)]' : 'bg-[var(--app-fg-dim)]',
           'transition-transform [transition-duration:var(--app-dur-2)] [transition-timing-function:var(--app-ease-out)]',
           checked ? 'translate-x-6' : 'translate-x-1'
         )}

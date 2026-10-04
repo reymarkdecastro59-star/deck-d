@@ -1,114 +1,144 @@
 import { Link, NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Library,
-  ListChecks,
-  Sparkles,
-  BarChart3,
-  MonitorSmartphone,
-  Settings,
-  ArrowRight,
-} from 'lucide-react'
+import { ArrowRight, LayoutGrid, ListChecks, MonitorSmartphone, Settings } from 'lucide-react'
 import { cn } from '@/app/ui/cn'
-import { useTrackerStatus } from './useTrackerStatus'
-import logo from "@/assets/Deck'D.png"
+import { Art } from '@/app/ui/Art'
+import { StageGlyph, Wordmark } from '@/app/ui/brand'
+import { formatDuration } from '@/lib/format'
+import { useTracking } from './trackingContext'
+import { useElapsed } from './useElapsed'
 
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
-  { to: '/library', label: 'Library', Icon: Library },
-  { to: '/sessions', label: 'Sessions', Icon: ListChecks },
-  { to: '/recommendations', label: 'Recommendations', Icon: Sparkles },
-  { to: '/stats', label: 'Stats', Icon: BarChart3 },
-  { to: '/devices', label: 'Devices', Icon: MonitorSmartphone },
+/**
+ * Sidebar v2 — a Surface-1 panel (common region) grouped by the product story:
+ * Overview, then 01 Track / 02 Understand / 03 Recommend. Every item has an
+ * icon; the active item gets a Signal tint, rail and weight change (never
+ * colour alone). The bottom card ties the shell to what you're playing:
+ * "Now playing" while the agent reports a live game, otherwise "Last session".
+ */
+const GROUPS = [
+  {
+    items: [
+      { to: '/dashboard', label: 'Overview', icon: <StageGlyph name="overview" size={18} /> },
+    ],
+  },
+  {
+    label: 'Track',
+    glyph: 'track',
+    items: [
+      {
+        to: '/library',
+        label: 'Library',
+        icon: <LayoutGrid className="h-[18px] w-[18px]" strokeWidth={1.6} />,
+      },
+      {
+        to: '/sessions',
+        label: 'Sessions',
+        icon: <ListChecks className="h-[18px] w-[18px]" strokeWidth={1.6} />,
+      },
+    ],
+  },
+  {
+    label: 'Understand',
+    glyph: 'understand',
+    items: [{ to: '/stats', label: 'Stats', icon: <StageGlyph name="understand" size={18} /> }],
+  },
+  {
+    label: 'Recommend',
+    glyph: 'recommend',
+    items: [{ to: '/for-you', label: 'For You', icon: <StageGlyph name="recommend" size={18} /> }],
+  },
 ]
 
-const UTIL = [{ to: '/settings', label: 'Settings', Icon: Settings }]
+// Devices moves into Settings in phase L7; until then it lives beside Settings.
+const SYSTEM = [
+  {
+    to: '/devices',
+    label: 'Devices',
+    icon: <MonitorSmartphone className="h-[18px] w-[18px]" strokeWidth={1.6} />,
+  },
+  {
+    to: '/settings',
+    label: 'Settings',
+    icon: <Settings className="h-[18px] w-[18px]" strokeWidth={1.6} />,
+  },
+]
 
 export function Sidebar() {
   return (
     <aside
-      className="flex shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-bg-2)]"
+      className="sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[var(--app-hairline)] bg-[var(--app-bg-2)] md:flex"
       style={{ width: 'var(--app-sidebar-w)', zIndex: 'var(--app-z-sidebar)' }}
     >
-      {/* Brand — official logo + wordmark. Comfortable breathing room. */}
-      <div className="px-6 pb-4 pt-6">
+      <div className="px-6 pb-5 pt-6">
         <Link
           to="/dashboard"
-          className="group flex items-center gap-3 focus-visible:outline-none"
-          aria-label="DECK'D — go to dashboard"
+          aria-label="DECK'D, Overview"
+          className="inline-flex rounded-[var(--app-r-1)]"
         >
-          <img src={logo} alt="" className="h-9 w-9 shrink-0 select-none" draggable={false} />
-          <span
-            className="text-[15px] font-medium tracking-[0.22em] text-[var(--app-fg-strong)]"
-            style={{ fontFamily: 'var(--app-font-display)' }}
-          >
-            DECK<span className="text-[var(--app-accent)]">&apos;</span>D
-          </span>
+          <Wordmark size={21} />
         </Link>
       </div>
 
-      {/* Primary nav */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-        {NAV.map((item) => (
-          <SidebarItem key={item.to} {...item} />
+      <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3.5 pb-4">
+        {GROUPS.map((g, i) => (
+          <div key={g.label ?? i} className={cn(i > 0 && 'mt-5')}>
+            {g.label && (
+              <div className="mb-1.5 flex items-center gap-2 px-3 text-[13px] font-semibold text-[var(--app-fg-muted)]">
+                <StageGlyph name={g.glyph} size={14} className="text-[var(--app-fg-dim)]" />
+                {g.label}
+              </div>
+            )}
+            <ul className="space-y-0.5">
+              {g.items.map((item) => (
+                <li key={item.to}>
+                  <SidebarItem {...item} />
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
 
-        <div className="my-4 h-px bg-[var(--app-hairline)]" aria-hidden />
-
-        {UTIL.map((item) => (
-          <SidebarItem key={item.to} {...item} />
-        ))}
+        <div className="my-5 h-px bg-[var(--app-hairline)]" aria-hidden />
+        <ul className="space-y-0.5">
+          {SYSTEM.map((item) => (
+            <li key={item.to}>
+              <SidebarItem {...item} />
+            </li>
+          ))}
+        </ul>
       </nav>
 
-      {/* Tracker status card — real state from useTrackerStatus. */}
-      <div className="px-3 pb-3">
-        <TrackerCard />
-      </div>
-
-      {/* Brand footer microcopy — mirrors landing's editorial tone. */}
-      <div
-        className="border-t border-[var(--app-hairline)] px-6 py-3 text-[10px] uppercase leading-[1.6] tracking-[0.22em] text-[var(--app-fg-dim)]"
-        style={{ fontFamily: 'var(--app-font-display)' }}
-      >
-        DECK<span className="text-[var(--app-fg-muted)]">&apos;</span>D
-        <br />
-        PLAY MORE
-        <br />
-        LIVE HIGHER
+      <div className="px-3.5 pb-4">
+        <SessionCard />
       </div>
     </aside>
   )
 }
 
-function SidebarItem({ to, label, Icon }) {
+function SidebarItem({ to, label, icon }) {
   return (
     <NavLink
       to={to}
+      end={to === '/dashboard'}
       className={({ isActive }) =>
         cn(
-          'group relative flex h-10 items-center gap-3 rounded-[var(--app-r-2)] px-3',
-          'text-[13.5px] transition-colors [transition-duration:var(--app-dur-1)]',
+          'flex h-10 items-center gap-3 rounded-[var(--app-r-2)] px-3 text-[15px]',
+          'transition-colors [transition-duration:var(--app-dur-1)]',
           isActive
-            ? 'bg-[var(--app-bg-3)] text-[var(--app-fg-strong)]'
-            : 'hover:bg-[var(--app-bg-3)]/60 text-[var(--app-fg-muted)] hover:text-[var(--app-fg)]'
+            ? 'bg-[var(--app-accent-tint)] font-semibold text-[var(--app-fg-strong)] shadow-[inset_2px_0_0_var(--app-accent)]'
+            : 'app-wt-small text-[var(--app-fg-muted)] hover:bg-[var(--app-bg-3)] hover:text-[var(--app-fg)]'
         )
       }
     >
       {({ isActive }) => (
         <>
-          {isActive && (
-            <span
-              aria-hidden
-              className="absolute inset-y-2 left-0 w-[2px] rounded-full bg-[var(--app-accent)]"
-            />
-          )}
-          <Icon
+          <span
             className={cn(
-              'h-[18px] w-[18px] shrink-0',
-              isActive ? 'text-[var(--app-fg-strong)]' : 'text-current'
+              'inline-flex',
+              isActive ? 'text-[var(--app-accent)]' : 'text-[var(--app-fg-dim)]'
             )}
-            strokeWidth={isActive ? 2 : 1.75}
-          />
+          >
+            {icon}
+          </span>
           <span className="truncate">{label}</span>
         </>
       )}
@@ -116,52 +146,65 @@ function SidebarItem({ to, label, Icon }) {
   )
 }
 
-function TrackerCard() {
-  const { status, label } = useTrackerStatus()
-  const isOnline = status === 'online'
+function SessionCard() {
+  const { live, lastSession, sync } = useTracking()
+  const elapsed = useElapsed(live?.started_at)
 
-  const dotClass =
-    status === 'online'
-      ? 'bg-[var(--app-ok)]'
-      : status === 'offline'
-        ? 'bg-[var(--app-fg-dim)]'
-        : 'bg-[var(--app-warn)]'
+  if (!live && !lastSession) {
+    if (sync.status === 'unknown') return null
+    return (
+      <div className="rounded-[var(--app-r-3)] border border-[var(--app-hairline)] bg-[var(--app-bg-3)] p-4">
+        <div className="text-[13px] font-semibold text-[var(--app-fg)]">No sessions yet</div>
+        <p className="mt-1 text-[13px] leading-[1.5] text-[var(--app-fg-muted)]">
+          Install the tracker and your play shows up here.
+        </p>
+        <Link
+          to="/devices"
+          className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--app-r-2)] border border-[var(--app-border-strong)] text-[13px] font-medium text-[var(--app-fg)] hover:bg-[var(--app-bg-2)]"
+        >
+          Set up tracker
+          <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
+        </Link>
+      </div>
+    )
+  }
+
+  const name = live?.game_name ?? lastSession?.game_name ?? 'Unknown game'
+  const ended = lastSession?.ended_at
+    ? new Date(lastSession.ended_at * 1000).toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null
 
   return (
-    <div
-      className="rounded-[var(--app-r-3)] border border-[var(--app-border)] bg-[var(--app-bg-3)] p-4"
-      role="status"
-      aria-live="polite"
+    <Link
+      to="/sessions"
+      className="block rounded-[var(--app-r-3)] border border-[var(--app-hairline)] bg-[var(--app-bg-3)] p-3.5 transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border)]"
+      aria-label={live ? `Now playing ${name}` : `Last session: ${name}`}
     >
-      <div
-        className="app-eyebrow text-[10px] text-[var(--app-fg-muted)]"
-        style={{ letterSpacing: '0.22em' }}
-      >
-        Tracker
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotClass)} />
-        <span className="text-[12.5px] text-[var(--app-fg)]">{label ?? 'Unknown'}</span>
-      </div>
-      {!isOnline && (
-        <>
-          <p className="mt-2 text-[11.5px] leading-[1.5] text-[var(--app-fg-muted)]">
-            Install the tracker to automatically log your gameplay.
-          </p>
-          <Link
-            to="/devices"
-            className={cn(
-              'mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-[var(--app-r-2)]',
-              'border border-[var(--app-border)] bg-[var(--app-bg-2)] text-[12px] text-[var(--app-fg)]',
-              'transition-colors [transition-duration:var(--app-dur-1)]',
-              'hover:border-[var(--app-border-strong)] hover:bg-[var(--app-bg-raised)]'
-            )}
-          >
-            Set up tracker
-            <ArrowRight className="h-3 w-3" strokeWidth={2} />
-          </Link>
-        </>
+      {live ? (
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-[var(--app-accent)]">
+          <span aria-hidden className="app-live-dot h-2 w-2 rounded-full bg-[var(--app-accent)]" />
+          Now playing
+        </div>
+      ) : (
+        <div className="text-[13px] font-semibold text-[var(--app-fg-muted)]">Last session</div>
       )}
-    </div>
+      <div className="mt-2.5 flex items-center gap-3">
+        <Art name={name} className="h-[53px] w-10 shrink-0 rounded-[4px]" />
+        <div className="min-w-0">
+          <div className="truncate text-[15px] font-semibold text-[var(--app-fg-strong)]">
+            {name}
+          </div>
+          <div className="app-num text-[14px] text-[var(--app-fg)]">
+            {formatDuration(live ? elapsed : lastSession?.duration_sec)}
+          </div>
+          <div className="app-wt-small truncate text-[13px] text-[var(--app-fg-muted)]">
+            {live ? (live.device_name ?? 'Playing now') : ended ? `Ended ${ended}` : sync.label}
+          </div>
+        </div>
+      </div>
+    </Link>
   )
 }

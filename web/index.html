@@ -8,9 +8,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Intel+One+Mono:ital,wght@0,400;0,500;0,600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Intel+One+Mono:ital,wght@0,400;0,500;0,600&display=swap"
       rel="stylesheet"
     />
+    <!-- Resolve the theme before first paint so there is no dark/light flash.
+         Mirrors resolveTheme() in src/app/design/theme.js. -->
+    <script>
+      (function () {
+        var pref = 'system'
+        try {
+          pref = localStorage.getItem('deckd.theme') || 'system'
+        } catch (e) {}
+        var light =
+          pref === 'light' ||
+          (pref === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches)
+        document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

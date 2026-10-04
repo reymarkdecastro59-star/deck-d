@@ -97,10 +97,7 @@ export function GlobalSearch({ open, onClose }) {
           exit={{ opacity: 0 }}
           transition={scrimTransition}
         >
-          <div
-            className="absolute inset-0 bg-[var(--app-scrim)] backdrop-blur-sm"
-            onClick={close}
-          />
+          <div className="absolute inset-0 bg-[var(--app-scrim)]" onClick={close} />
           <motion.div
             ref={panelRef}
             role="dialog"

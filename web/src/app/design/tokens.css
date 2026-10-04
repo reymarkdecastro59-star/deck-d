@@ -6,37 +6,49 @@
  */
 
 :root {
-  /* ── surfaces ───────────────────────────────────────────────── */
-  --app-bg: #06070e;
-  --app-bg-2: #0a0b18;
-  --app-bg-3: #10122a;
-  --app-bg-raised: #141636;
-  --app-hairline: rgba(120, 140, 200, 0.08);
-  --app-border: rgba(120, 140, 200, 0.16);
-  --app-border-strong: rgba(120, 140, 200, 0.28);
-  --app-scrim: rgba(4, 5, 12, 0.72);
+  /* ── surfaces (Signal Deck · Ink) ──────────────────────────
+     Elevation = lighter surface: bg → bg-2 (panel) → bg-3 → raised. */
+  --app-bg: #0b0d10;
+  --app-bg-2: #11151a;
+  --app-bg-3: #171d23;
+  --app-bg-raised: #202830;
+  --app-hairline: rgba(245, 247, 248, 0.08);
+  --app-border: rgba(245, 247, 248, 0.14);
+  --app-border-strong: #6e7781; /* control border, ≥3:1 on every surface */
+  --app-scrim: rgba(5, 6, 8, 0.72);
+  --app-panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 
-  /* ── text ──────────────────────────────────────────────────── */
-  --app-fg: #e8eaf4;
-  --app-fg-strong: #ffffff;
-  --app-fg-muted: #8a8fae;
-  --app-fg-dim: #5c6180;
+  /* ── text (all ≥4.5:1 on every surface) ─────────────────────── */
+  --app-fg: #f5f7f8;
+  --app-fg-strong: #f5f7f8;
+  --app-fg-muted: #a9b2bb;
+  --app-fg-dim: #86919c;
+  /* Dark mode thins small strokes (halation) — small text gets 500. */
+  --app-wt-small: 500;
 
-  /* ── accent (restrained blue) ─────────────────────────────── */
-  --app-accent: #4c7dff;
-  --app-accent-hi: #7096ff;
-  --app-accent-lo: #2e4fb8;
-  --app-accent-tint: rgba(76, 125, 255, 0.1);
-  --app-accent-rail: rgba(76, 125, 255, 0.55);
-  --app-accent-ring: rgba(76, 125, 255, 0.32);
+  /* ── Signal (brand + action) ───────────────────────────────── */
+  --app-accent: #55e6c1;
+  --app-accent-hi: #7bedd0;
+  --app-accent-lo: #2fb895;
+  --app-on-accent: #07110e;
+  --app-accent-tint: rgba(85, 230, 193, 0.1);
+  --app-accent-rail: #55e6c1;
+  --app-accent-ring: rgba(85, 230, 193, 0.4);
 
-  /* ── semantic (controlled) ────────────────────────────────── */
-  --app-ok: #3fbf87;
-  --app-ok-tint: rgba(63, 191, 135, 0.12);
-  --app-warn: #e0a54b;
-  --app-warn-tint: rgba(224, 165, 75, 0.12);
-  --app-danger: #e06565;
-  --app-danger-tint: rgba(224, 101, 101, 0.12);
+  /* ── semantic ──────────────────────────────────────────────────
+     ok = Signal (a confirmed state is a signal). warn/drift = amber,
+     reserved for the Drifting game state. danger = errors only. */
+  --app-ok: #55e6c1;
+  --app-ok-tint: rgba(85, 230, 193, 0.1);
+  --app-warn: #f4b860;
+  --app-warn-tint: rgba(244, 184, 96, 0.12);
+  --app-drift: #f4b860;
+  --app-danger: #ff7a7a;
+  --app-danger-tint: rgba(255, 122, 122, 0.12);
+  --app-series-2: #7da7ff;
+
+  /* Ambient tint strength behind art-led heroes. */
+  --app-amb-opacity: 0.26;
 
   /* ── session label chips (low-chroma, distinguishable) ────── */
   --chip-focused: #6c8dff;
@@ -48,8 +60,9 @@
   /* ── radii ─────────────────────────────────────────────────── */
   --app-r-1: 4px;
   --app-r-2: 8px;
-  --app-r-3: 12px;
-  --app-r-4: 16px;
+  --app-r-3: 10px; /* panels — brand hard cap */
+  --app-r-4: 10px;
+  --app-r-art: 12px; /* large art heroes only */
   --app-r-pill: 999px;
 
   /* ── spacing (4-based) ────────────────────────────────────── */
@@ -73,21 +86,22 @@
   /* ── elevation (mostly hairlines, minimal shadow) ─────────── */
   --app-elev-0: none;
   --app-elev-1: 0 0 0 1px var(--app-border);
-  --app-elev-hover: 0 0 0 1px var(--app-border-strong);
+  --app-elev-hover: 0 0 0 1px var(--app-border);
   --app-elev-panel: 0 1px 0 var(--app-hairline), 0 12px 40px rgba(0, 0, 0, 0.4);
-  --app-elev-pop: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--app-border-strong);
+  --app-elev-pop: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--app-border);
 
   /* ── type ─────────────────────────────────────────────────── */
-  --app-font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --app-font-display: 'Intel One Mono', ui-monospace, monospace;
-  --app-font-num: 'Intel One Mono', ui-monospace, monospace;
+  --app-font-ui: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --app-font-display: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --app-font-num: 'Geist Mono', ui-monospace, monospace;
 
-  --app-fs-caption: 11px;
-  --app-fs-micro: 12px;
-  --app-fs-body: 14px;
-  --app-fs-body-lg: 15px;
-  --app-fs-h5: 16px;
-  --app-fs-h4: 20px;
+  /* 13px is the floor for information (UX v2 R3/R7). */
+  --app-fs-caption: 12px;
+  --app-fs-micro: 13px;
+  --app-fs-body: 15px;
+  --app-fs-body-lg: 16px;
+  --app-fs-h5: 17px;
+  --app-fs-h4: 22px;
   --app-fs-h3: 24px;
   --app-fs-h2: 32px;
   --app-fs-h1: 44px;
@@ -96,14 +110,14 @@
   --app-lh-snug: 1.35;
   --app-lh-normal: 1.55;
 
-  --app-ls-eyebrow: 1.8px;
+  --app-ls-eyebrow: 0.12em;
 
   /* ── motion ───────────────────────────────────────────────── */
   --app-dur-1: 120ms;
-  --app-dur-2: 180ms;
-  --app-dur-3: 260ms;
-  --app-dur-4: 360ms;
-  --app-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --app-dur-2: 200ms;
+  --app-dur-3: 320ms;
+  --app-dur-4: 600ms;
+  --app-ease-out: cubic-bezier(0.2, 0, 0, 1);
   --app-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ── z-index scale ────────────────────────────────────────── */
@@ -115,26 +129,46 @@
   --app-z-tooltip: 70;
 }
 
-/* Light theme override — opt-in via data-theme='light' on <html>. */
+/* Light theme (Signal Deck · Bone) — designed as a peer, not an inversion.
+   Opt-in via data-theme='light' on <html> (theme.js resolves "system"). */
 :root[data-theme='light'] {
-  --app-bg: #f6f7fb;
+  --app-bg: #f6f6f2;
   --app-bg-2: #ffffff;
-  --app-bg-3: #eceef6;
-  --app-bg-raised: #ffffff;
-  --app-hairline: rgba(30, 40, 80, 0.06);
-  --app-border: rgba(30, 40, 80, 0.12);
-  --app-border-strong: rgba(30, 40, 80, 0.22);
-  --app-scrim: rgba(20, 24, 40, 0.32);
+  --app-bg-3: #ecefea;
+  --app-bg-raised: #e1e6e1;
+  --app-hairline: rgba(21, 25, 29, 0.08);
+  --app-border: rgba(21, 25, 29, 0.14);
+  --app-border-strong: #737a75;
+  --app-scrim: rgba(21, 25, 29, 0.4);
+  --app-panel-shadow: 0 1px 2px rgba(21, 25, 29, 0.06);
 
-  --app-fg: #0f1226;
-  --app-fg-strong: #05061a;
-  --app-fg-muted: #4a506b;
-  --app-fg-dim: #7a7f9e;
+  --app-fg: #15191d;
+  --app-fg-strong: #15191d;
+  --app-fg-muted: #434c55;
+  --app-fg-dim: #5c6872;
+  --app-wt-small: 400;
 
-  --app-accent-tint: rgba(76, 125, 255, 0.08);
+  --app-accent: #086b5b;
+  --app-accent-hi: #065a4c;
+  --app-accent-lo: #054c41;
+  --app-on-accent: #ffffff;
+  --app-accent-tint: rgba(8, 107, 91, 0.08);
+  --app-accent-rail: #086b5b;
+  --app-accent-ring: rgba(8, 107, 91, 0.35);
 
-  --app-elev-panel: 0 1px 0 var(--app-hairline), 0 6px 20px rgba(20, 24, 40, 0.08);
-  --app-elev-pop: 0 8px 24px rgba(20, 24, 40, 0.14), 0 0 0 1px var(--app-border-strong);
+  --app-ok: #086b5b;
+  --app-ok-tint: rgba(8, 107, 91, 0.08);
+  --app-warn: #965a00;
+  --app-warn-tint: rgba(150, 90, 0, 0.1);
+  --app-drift: #965a00;
+  --app-danger: #b42d2d;
+  --app-danger-tint: rgba(180, 45, 45, 0.08);
+  --app-series-2: #3267c8;
+
+  --app-amb-opacity: 0.14;
+
+  --app-elev-panel: 0 1px 0 var(--app-hairline), 0 6px 20px rgba(21, 25, 29, 0.08);
+  --app-elev-pop: 0 8px 24px rgba(21, 25, 29, 0.12), 0 0 0 1px var(--app-border);
 }
 
 /* Reduced motion — user OS preference AND explicit app toggle. */
@@ -182,7 +216,7 @@
   font-weight: 500;
   color: var(--app-fg-strong);
   background: var(--app-bg-raised);
-  border: 1px solid var(--app-accent);
+  border: 2px solid var(--app-accent);
   border-radius: var(--app-r-2);
 }
 
@@ -224,10 +258,80 @@
 
 /* Uppercase eyebrow — used sparingly for section labels. */
 .app-eyebrow {
-  font-family: var(--app-font-display);
+  font-family: var(--app-font-num);
   font-size: var(--app-fs-caption);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: var(--app-ls-eyebrow);
   text-transform: uppercase;
   color: var(--app-fg-muted);
+}
+
+/* Dark mode: 13–15px text at weight 500 to offset halation (UX v2 R22). */
+.app-wt-small {
+  font-weight: var(--app-wt-small);
+}
+
+/* Art tiles: a 2px lift on the tile, a slow 1.02 "breathe" on the art and a
+   Signal outline on the frame. Whole tile is the target (Fitts). */
+.app-tile {
+  transition: transform var(--app-dur-2) var(--app-ease-out);
+}
+.app-tile .app-art {
+  transition: transform var(--app-dur-3) var(--app-ease-out);
+}
+.app-tile .app-frame {
+  outline: 1px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color var(--app-dur-2) var(--app-ease-out);
+}
+@media (hover: hover) {
+  .app-tile:hover {
+    transform: translateY(-2px);
+  }
+  .app-tile:hover .app-art {
+    transform: scale(1.02);
+  }
+  .app-tile:hover .app-frame {
+    outline-color: var(--app-accent);
+  }
+}
+.app-tile:focus-visible .app-frame {
+  outline: 2px solid var(--app-accent);
+}
+
+/* Live presence pulse (Now playing). Static dot under reduced motion. */
+@keyframes app-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(85, 230, 193, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(85, 230, 193, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(85, 230, 193, 0);
+  }
+}
+.app-live-dot {
+  animation: app-live-pulse 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-tile,
+  .app-tile .app-art {
+    transition: none;
+  }
+  .app-tile:hover,
+  .app-tile:hover .app-art {
+    transform: none;
+  }
+  .app-live-dot {
+    animation: none;
+  }
+}
+:root[data-motion='reduced'] .app-tile:hover,
+:root[data-motion='reduced'] .app-tile:hover .app-art {
+  transform: none;
+}
+:root[data-motion='reduced'] .app-live-dot {
+  animation: none;
 }

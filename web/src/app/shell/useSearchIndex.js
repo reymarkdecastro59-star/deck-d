@@ -12,9 +12,9 @@ const PAGE_SHORTCUTS = [
   {
     id: 'page:recs',
     kind: 'page',
-    title: 'Recommendations',
-    hint: 'Curated picks',
-    link: '/recommendations',
+    title: 'For You',
+    hint: 'Recommendations from your play',
+    link: '/for-you',
   },
   { id: 'page:stats', kind: 'page', title: 'Stats', hint: 'Analytics', link: '/stats' },
   { id: 'page:devices', kind: 'page', title: 'Devices', hint: 'Trackers', link: '/devices' },

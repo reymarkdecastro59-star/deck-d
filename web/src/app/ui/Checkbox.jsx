@@ -27,11 +27,15 @@ export function Checkbox({ checked, indeterminate, onChange, disabled, id, class
           className="cursor-inherit absolute inset-0 opacity-0"
         />
         {indeterminate ? (
-          <svg viewBox="0 0 10 2" className="h-[2px] w-2.5 fill-white">
+          <svg viewBox="0 0 10 2" className="h-[2px] w-2.5 fill-[var(--app-on-accent)]">
             <rect width="10" height="2" />
           </svg>
         ) : checked ? (
-          <svg viewBox="0 0 10 8" className="h-2 w-2.5 fill-none stroke-white" strokeWidth="1.6">
+          <svg
+            viewBox="0 0 10 8"
+            className="h-2 w-2.5 fill-none stroke-[var(--app-on-accent)]"
+            strokeWidth="1.6"
+          >
             <path d="M1 4 L4 7 L9 1" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : null}
