@@ -175,6 +175,40 @@ def sync_sessions() -> tuple[int, int]:
     return ok_total, failed_total
 
 
+def send_heartbeat() -> bool:
+    """Check in with the backend so this device shows as connected.
+
+    Devices used to be registered only by the first session upload, so a
+    signed-in agent that hadn't seen a game yet was invisible and the web
+    said "No tracker yet". Sent for the active, non-revoked account only;
+    never raises (a failed check-in must not disturb tracking or sync).
+    Returns True when the backend acknowledged it.
+    """
+    try:
+        active = token_store.read().active_healthy()
+    except Exception:  # noqa: BLE001 — unreadable store = nothing to report
+        return False
+    if active is None:
+        return False
+    try:
+        token = get_id_token(active.user_id)
+    except RuntimeError:
+        return False
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Device-Id": get_device_id(),
+        "X-Device-Name": get_device_name(),
+    }
+    try:
+        resp = requests.post(f"{API_URL}/devices/heartbeat", headers=headers, timeout=10)
+    except requests.RequestException:
+        return False
+    if resp.status_code != 200:
+        print(f"[deckd] heartbeat returned HTTP {resp.status_code}", file=sys.stderr)
+        return False
+    return True
+
+
 def _log_terminal(status_code: int, user_id: str, device_id: str) -> None:
     """Single log line per (account, tick) for a terminal auth/device response."""
     short_user = user_id[:8]

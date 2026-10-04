@@ -517,3 +517,76 @@ def test_403_device_revoked_when_account_already_logged_out_does_not_notify(
     assert ok == 0
     assert failed >= 1
     mock_notify.assert_not_called()
+
+
+# ---------- heartbeat (device check-in) -------------------------------------
+# A signed-in agent checks in every tick so the web shows the tracker as
+# connected before any game is played (it was invisible until the first
+# session upload, so the dashboard said "No tracker yet").
+
+class _JsonResp(_Resp):
+    def __init__(self, status_code: int, body: dict | None = None):
+        super().__init__(status_code)
+        self._body = body or {}
+
+    def json(self):
+        return self._body
+
+
+def _seed_active(user_id: str = "user-hb", revoked: bool = False) -> None:
+    import token_store
+    store = token_store.read()
+    store.upsert(token_store.Account(
+        user_id=user_id, email=f"{user_id}@example.com", id_token="x",
+        refresh_token="y", expires_at=2_000_000_000,
+        revoked_at=1 if revoked else None,
+    ))
+    store.set_active(user_id)
+    token_store.write(store)
+
+
+def test_heartbeat_posts_device_headers_for_active_account(tmp_deckd, monkeypatch, token_by_user):
+    _seed_active()
+    token_by_user["user-hb"] = "tok-hb"
+    post = MagicMock(return_value=_JsonResp(200))
+    monkeypatch.setattr(sync.requests, "post", post)
+
+    assert sync.send_heartbeat() is True
+    post.assert_called_once()
+    url = post.call_args.args[0]
+    headers = post.call_args.kwargs["headers"]
+    assert url.endswith("/devices/heartbeat")
+    assert headers["Authorization"] == "Bearer tok-hb"
+    assert headers["X-Device-Id"] and headers["X-Device-Name"]
+
+
+def test_heartbeat_skips_without_active_account(tmp_deckd, monkeypatch, token_by_user):
+    post = MagicMock()
+    monkeypatch.setattr(sync.requests, "post", post)
+    assert sync.send_heartbeat() is False
+    post.assert_not_called()
+
+
+def test_heartbeat_skips_revoked_active_account(tmp_deckd, monkeypatch, token_by_user):
+    _seed_active(revoked=True)
+    token_by_user["user-hb"] = "tok-hb"
+    post = MagicMock()
+    monkeypatch.setattr(sync.requests, "post", post)
+    assert sync.send_heartbeat() is False
+    post.assert_not_called()
+
+
+def test_heartbeat_network_error_is_swallowed(tmp_deckd, monkeypatch, token_by_user):
+    _seed_active()
+    token_by_user["user-hb"] = "tok-hb"
+    monkeypatch.setattr(sync.requests, "post",
+                        MagicMock(side_effect=sync.requests.ConnectionError("offline")))
+    assert sync.send_heartbeat() is False
+
+
+def test_heartbeat_token_failure_is_swallowed(tmp_deckd, monkeypatch, token_by_user):
+    _seed_active()  # no token registered -> fake get_id_token raises RuntimeError
+    post = MagicMock()
+    monkeypatch.setattr(sync.requests, "post", post)
+    assert sync.send_heartbeat() is False
+    post.assert_not_called()

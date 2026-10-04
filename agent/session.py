@@ -335,3 +335,65 @@ def count_orphan_rows() -> int:
             "SELECT COUNT(*) FROM sessions WHERE user_id IS NULL"
         ).fetchone()
     return int(row[0]) if row else 0
+
+
+def _local_midnight(ts: int) -> int:
+    lt = time.localtime(ts)
+    return int(time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)))
+
+
+def local_summary(user_id: str, now: int | None = None) -> dict:
+    """Play on THIS PC for the companion window's mini dashboard.
+
+    Local-only (no network): today's and this week's seconds (Monday-start,
+    local time), per-day hours for the week meter, the newest finished
+    session, the currently open one (live), and how many rows await sync.
+    """
+    now = int(now if now is not None else time.time())
+    today = _local_midnight(now)
+    monday = today - time.localtime(now).tm_wday * 86_400
+    days = [0.0] * 7
+    today_sec = week_sec = 0
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT started_at, COALESCE(duration_sec, 0) FROM sessions "
+            "WHERE user_id = ? AND ended_at IS NOT NULL AND started_at >= ?",
+            (user_id, monday),
+        ).fetchall()
+        last = conn.execute(
+            "SELECT game_name, duration_sec, ended_at FROM sessions "
+            "WHERE user_id = ? AND ended_at IS NOT NULL AND duration_sec > 0 "
+            "ORDER BY ended_at DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        live = conn.execute(
+            "SELECT game_name, started_at FROM sessions "
+            "WHERE user_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = ? AND synced = ? AND ended_at IS NOT NULL",
+            (user_id, SYNC_PENDING),
+        ).fetchone()[0]
+    for started_at, dur in rows:
+        idx = min(6, max(0, (started_at - monday) // 86_400))
+        days[idx] += dur / 3600
+        week_sec += dur
+        if started_at >= today:
+            today_sec += dur
+    if live:  # count the running session too, so "today" moves while you play
+        running = max(0, now - live[1])
+        today_sec += running
+        week_sec += running
+        days[min(6, max(0, (live[1] - monday) // 86_400))] += running / 3600
+    return {
+        "today_sec": today_sec,
+        "week_sec": week_sec,
+        "week_days": [round(h, 2) for h in days],
+        "today_index": time.localtime(now).tm_wday,
+        "last_session": (
+            {"game_name": last[0], "duration_sec": last[1], "ended_at": last[2]} if last else None
+        ),
+        "live": {"game_name": live[0], "started_at": live[1]} if live else None,
+        "pending_sync": pending,
+    }

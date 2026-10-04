@@ -199,15 +199,24 @@ def test_on_logout_removes_active_account(tmp_deckd, monkeypatch):
     assert reloaded.accounts == []
 
 
-def test_on_add_account_spawns_login_subprocess(tmp_deckd, monkeypatch):
+def test_on_add_account_opens_themed_signin_view(tmp_deckd, monkeypatch):
+    # "Add account" now opens the companion window's sign-in view (the old
+    # grey Tk dialog is gone). The window's bridge handles the actual login.
     from unittest.mock import MagicMock
-    _seed([])
-    popen = MagicMock()
-    monkeypatch.setattr(main.subprocess, "Popen", popen)
-    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
-
+    ui = MagicMock()
+    monkeypatch.setattr(main, "_UI", ui)
     main._on_add_account(MagicMock(), MagicMock())
+    ui.show.assert_called_once_with("signin")
 
-    popen.assert_called_once()
-    args = popen.call_args.args[0]
-    assert any("login.py" in str(a) for a in args)
+
+def test_signed_in_starts_services_once(tmp_deckd, monkeypatch):
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(main, "_services_started", False)
+    for mod, fn in ((main.watcher, "start"), (main.power, "start")):
+        monkeypatch.setattr(mod, fn, MagicMock())
+    monkeypatch.setattr(main.threading, "Thread", MagicMock())
+    monkeypatch.setattr(main, "_refresh_tray", MagicMock())
+    main._on_signed_in()
+    main._on_signed_in()  # second sign-in (another account) must not double-start
+    main.watcher.start.assert_called_once()
+    main.power.start.assert_called_once()

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Local-only page: no network, no remote scripts. Talks to Python solely via window.pywebview.api. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="color-scheme" content="dark light">
+<title>DECK'D</title>
+<style>
+  :root {
+    --bg:#0B0D10; --s1:#11151A; --s2:#171D23; --s3:#202830;
+    --hair:rgba(245,247,248,.08); --div:rgba(245,247,248,.14); --ctl:#6E7781;
+    --fg:#F5F7F8; --fg2:#A9B2BB; --fg3:#86919C;
+    --sig:#55E6C1; --onsig:#07110E; --sigtint:rgba(85,230,193,.10);
+    --danger:#FF7A7A; --dangertint:rgba(255,122,122,.10); --wt:500;
+    --sans:'Geist','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+    --mono:'Geist Mono','Cascadia Mono',Consolas,ui-monospace,monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#F6F6F2; --s1:#FFFFFF; --s2:#ECEFEA; --s3:#E1E6E1;
+      --hair:rgba(21,25,29,.08); --div:rgba(21,25,29,.14); --ctl:#737A75;
+      --fg:#15191D; --fg2:#434C55; --fg3:#5C6872;
+      --sig:#086B5B; --onsig:#FFFFFF; --sigtint:rgba(8,107,91,.08);
+      --danger:#B42D2D; --dangertint:rgba(180,45,45,.08); --wt:400;
+    }
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--fg); font:15px/1.5 var(--sans); -webkit-font-smoothing:antialiased; overflow:hidden; user-select:none; }
+  button, input { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--sig); outline-offset:2px; border-radius:6px; }
+  .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  .muted { color:var(--fg2); font-weight:var(--wt); }
+  .dim { color:var(--fg3); }
+
+  /* Title bar — drag region (pywebview) + window controls */
+  .bar { display:flex; align-items:center; height:48px; padding:0 8px 0 18px; }
+  .bar .drag { flex:1; height:100%; display:flex; align-items:center; }
+  .wm { display:inline-flex; align-items:flex-start; font-weight:600; font-size:17px; line-height:1; letter-spacing:-.02em; }
+  .wm i { display:inline-block; width:2.5px; height:7px; margin:1px 2px 0; border-radius:1px; background:var(--sig); }
+  .ctl { width:36px; height:32px; border:0; border-radius:6px; background:transparent; color:var(--fg2); cursor:pointer; display:grid; place-items:center; }
+  .ctl:hover { background:var(--s2); color:var(--fg); }
+  .ctl.close:hover { background:var(--danger); color:#fff; }
+
+  main { height:calc(100% - 48px); overflow:auto; padding:2px 20px 18px; scrollbar-width:thin; }
+  .view { display:none; animation:in .22s cubic-bezier(.2,0,0,1); }
+  .view.on { display:flex; flex-direction:column; min-height:100%; }
+  @keyframes in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce) { .view { animation:none; } .spin { animation:none !important; } .live-dot { animation:none !important; } }
+
+  /* Sign in */
+  .mark { width:38px; height:50px; border:2px solid var(--fg); border-radius:8px; display:grid; place-items:center; margin:18px 0 22px; }
+  .mark i { width:5px; height:16px; border-radius:2px; background:var(--sig); }
+  h1 { margin:0; font-size:26px; line-height:1.15; font-weight:600; letter-spacing:-.025em; }
+  .lede { margin:8px 0 26px; }
+  label { display:block; font-size:13px; font-weight:600; margin:0 0 6px; color:var(--fg); }
+  .field { margin-bottom:16px; }
+  .input { position:relative; }
+  input[type=email], input[type=password], input[type=text] {
+    width:100%; height:46px; padding:0 14px; border-radius:8px; border:1px solid var(--div);
+    background:var(--s1); outline:none; user-select:text; transition:border-color .12s;
+  }
+  input:hover { border-color:var(--ctl); }
+  input:focus { border-color:var(--sig); box-shadow:0 0 0 3px var(--sigtint); }
+  .reveal { position:absolute; right:6px; top:7px; height:32px; padding:0 10px; border:0; border-radius:6px; background:transparent; color:var(--fg2); font-size:13px; cursor:pointer; }
+  .reveal:hover { color:var(--fg); background:var(--s2); }
+  .error { display:none; gap:8px; align-items:flex-start; padding:10px 12px; border-radius:8px; background:var(--dangertint); color:var(--danger); font-size:14px; margin-bottom:14px; }
+  .error.on { display:flex; }
+  .primary { width:100%; height:46px; border:0; border-radius:8px; background:var(--sig); color:var(--onsig); font-weight:600; font-size:15px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:10px; transition:filter .12s, transform .08s; }
+  .primary:hover { filter:brightness(1.06); }
+  .primary:active { transform:translateY(1px); }
+  .primary[disabled] { opacity:.7; cursor:progress; }
+  .spin { width:16px; height:16px; border-radius:50%; border:2px solid currentColor; border-right-color:transparent; animation:spin .7s linear infinite; display:none; }
+  .busy .spin { display:inline-block; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .link { border:0; background:none; padding:0; color:var(--fg); font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+  .note { margin-top:auto; padding-top:22px; font-size:12.5px; }
+
+  /* Dashboard */
+  .status { display:flex; align-items:center; gap:8px; font-size:13px; margin:0 0 10px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--sig); flex:none; }
+  .live-dot { animation:pulse 1.8s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(85,230,193,.55); } 70% { box-shadow:0 0 0 8px rgba(85,230,193,0); } 100% { box-shadow:0 0 0 0 rgba(85,230,193,0); } }
+  .panel { background:var(--s1); border:1px solid var(--hair); border-radius:10px; padding:13px 14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.04); }
+  @media (prefers-color-scheme: light) { .panel { box-shadow:0 1px 2px rgba(21,25,29,.06); } }
+  .eyebrow { font-size:12px; font-weight:600; color:var(--fg2); display:flex; align-items:center; gap:8px; }
+  .eyebrow.live { color:var(--sig); }
+  .game { font-size:20px; font-weight:600; letter-spacing:-.02em; margin:4px 0 0; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .big { font-size:26px; font-weight:600; letter-spacing:-.03em; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .readout { font-size:21px; font-weight:600; letter-spacing:-.03em; line-height:1.1; margin-top:4px; }
+  .meter { display:flex; gap:6px; margin-top:10px; }
+  .meter .col { flex:1; display:flex; flex-direction:column; gap:6px; align-items:stretch; }
+  .meter .seg { position:relative; height:30px; border-radius:4px; background:var(--s3); overflow:hidden; }
+  .meter .seg b { position:absolute; left:0; right:0; bottom:0; background:var(--sig); border-radius:3px; }
+  .meter .seg.today { outline:1px solid var(--ctl); outline-offset:2px; }
+  .meter .lbl { text-align:center; font-size:12px; color:var(--fg2); }
+  .meter .lbl.today { color:var(--fg); font-weight:600; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:14px; }
+  .sync { margin-top:8px; padding:10px 14px; }
+  .ghost { height:32px; padding:0 12px; border-radius:6px; border:1px solid var(--ctl); background:transparent; font-size:13px; font-weight:600; cursor:pointer; }
+  .ghost:hover { background:var(--s2); }
+  .switch { position:relative; width:40px; height:24px; border-radius:999px; border:1px solid var(--ctl); background:transparent; cursor:pointer; flex:none; transition:background .15s; }
+  .switch::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:var(--fg3); transition:transform .15s, background .15s; }
+  .switch[aria-checked=true] { background:var(--sig); border-color:var(--sig); }
+  .switch[aria-checked=true]::after { transform:translateX(16px); background:var(--onsig); }
+  .switch[disabled] { opacity:.45; cursor:not-allowed; }
+  .foot { margin-top:auto; padding-top:12px; display:flex; flex-direction:column; gap:10px; }
+  .acct { display:flex; align-items:center; justify-content:space-between; font-size:13px; }
+  .textbtn { border:0; background:none; color:var(--fg2); font-size:13px; font-weight:600; cursor:pointer; padding:4px 0; }
+  .textbtn:hover { color:var(--fg); }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div class="drag pywebview-drag-region"><span class="wm" aria-label="DECK'D">DECK<i></i>D</span></div>
+    <button class="ctl" id="btn-min" aria-label="Minimize" title="Minimize">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button class="ctl close" id="btn-close" aria-label="Close to tray" title="Close (keeps tracking in the tray)">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <main>
+    <!-- ── Sign in ─────────────────────────────────────────────── -->
+    <section class="view" id="view-signin" aria-labelledby="si-title">
+      <div class="mark" aria-hidden="true"><i></i></div>
+      <h1 id="si-title">Sign in to DECK'D</h1>
+      <p class="lede muted">Games you play on this PC will land in your dashboard automatically.</p>
+      <form id="signin-form" novalidate>
+        <div class="error" id="si-error" role="alert"></div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="username" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="input">
+            <input id="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="reveal" id="reveal" aria-pressed="false" aria-controls="password">Show</button>
+          </div>
+        </div>
+        <button type="submit" class="primary" id="si-submit"><span class="spin" aria-hidden="true"></span><span id="si-label">Sign in</span></button>
+      </form>
+      <p class="muted" style="font-size:14px; margin:18px 0 0">New to DECK'D? <button class="link" id="signup">Create an account</button></p>
+      <p class="note dim">DECK'D records which game is running and for how long. Nothing else.</p>
+    </section>
+
+    <!-- ── Mini dashboard ──────────────────────────────────────── -->
+    <section class="view" id="view-dash" aria-label="DECK'D on this PC">
+      <div class="status" id="status"><span class="dot" id="status-dot"></span><span id="status-text">Tracking</span></div>
+
+      <div class="panel" id="hero" aria-live="polite"></div>
+
+      <div class="grid2">
+        <div class="panel"><div class="eyebrow">Today</div><div class="readout mono" id="today">0m</div></div>
+        <div class="panel"><div class="eyebrow">This week</div><div class="readout mono" id="week">0m</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:8px">
+        <div class="row"><span class="eyebrow">This week on this PC</span><span class="dim mono" style="font-size:12px" id="watching"></span></div>
+        <div class="meter" id="meter" role="img"></div>
+      </div>
+
+      <div class="panel sync row" id="sync"></div>
+
+      <div class="foot">
+        <button class="primary" id="open-dash">Open full dashboard
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3h7v7"/><path d="M13 3L4 12"/></svg>
+        </button>
+        <div class="row">
+          <span id="as-label">Start with Windows</span>
+          <button class="switch" id="autostart" role="switch" aria-checked="false" aria-labelledby="as-label"></button>
+        </div>
+        <div class="acct">
+          <span class="dim" id="acct-email"></span>
+          <button class="textbtn" id="signout">Sign out</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id)
+  const api = () => (window.pywebview && window.pywebview.api) || null
+  let state = null
+  let tick = null
+
+  const fmt = (sec) => {
+    sec = Math.max(0, Math.round(sec || 0))
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60)
+    return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`
+  }
+  const ago = (ts) => {
+    const d = Date.now() / 1000 - ts
+    if (d < 90) return 'just now'
+    if (d < 3600) return `${Math.round(d / 60)} min ago`
+    if (d < 86400) return `${Math.round(d / 3600)} h ago`
+    return `${Math.round(d / 86400)} d ago`
+  }
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n }
+
+  function show(view) {
+    $('view-signin').classList.toggle('on', view === 'signin')
+    $('view-dash').classList.toggle('on', view === 'dash')
+    if (view === 'signin') setTimeout(() => ($('email').value ? $('password') : $('email')).focus(), 30)
+  }
+
+  function renderHero(s) {
+    const hero = $('hero'); hero.replaceChildren()
+    if (tick) { clearInterval(tick); tick = null }
+    if (s.live) {
+      const eb = el('div', 'eyebrow live'); const d = el('span', 'dot live-dot'); eb.append(d, el('span', null, 'Now playing'))
+      const timer = el('div', 'big mono')
+      const upd = () => (timer.textContent = fmt(Date.now() / 1000 - s.live.started_at))
+      upd(); tick = setInterval(upd, 1000)
+      hero.append(eb, el('div', 'game', s.live.game_name), timer, el('div', 'muted', 'Recording on this PC'))
+    } else if (s.last_session) {
+      hero.append(el('div', 'eyebrow', 'Last session'), el('div', 'game', s.last_session.game_name),
+        el('div', 'big mono', fmt(s.last_session.duration_sec)), el('div', 'muted', `Ended ${ago(s.last_session.ended_at)}`))
+    } else {
+      hero.append(el('div', 'eyebrow', 'Ready'), el('div', 'game', 'Play a game to start'),
+        el('div', 'muted', 'Sessions record automatically when a detected game runs.'))
+    }
+  }
+
+  function renderMeter(s) {
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'], names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    const vals = s.week_days || [0, 0, 0, 0, 0, 0, 0], max = Math.max(1, ...vals)
+    const m = $('meter'); m.replaceChildren()
+    vals.forEach((v, i) => {
+      const col = el('div', 'col'); const seg = el('div', 'seg' + (i === s.today_index ? ' today' : ''))
+      if (v > 0) { const b = el('b'); b.style.height = `${Math.max(8, (v / max) * 100)}%`; seg.append(b) }
+      col.append(seg, el('div', 'lbl' + (i === s.today_index ? ' today' : ''), days[i])); m.append(col)
+    })
+    m.setAttribute('aria-label', 'Hours this week: ' + vals.map((v, i) => `${names[i]} ${v} hours`).join(', '))
+  }
+
+  function renderSync(s) {
+    const box = $('sync'); box.replaceChildren()
+    if (s.pending_sync > 0) {
+      box.append(el('span', null, `${s.pending_sync} session${s.pending_sync === 1 ? '' : 's'} waiting to sync`))
+      const b = el('button', 'ghost', 'Sync now')
+      b.onclick = async () => { b.disabled = true; b.textContent = 'Syncing…'; await api().sync_now(); setTimeout(refresh, 4000) }
+      box.append(b)
+    } else {
+      const ok = el('span'); ok.style.cssText = 'display:inline-flex;align-items:center;gap:8px'
+      const d = el('span', 'dot'); ok.append(d, el('span', null, 'Everything synced'))
+      box.append(ok, el('span', 'dim', 'to your account'))
+    }
+  }
+
+  function render(s, view) {
+    state = s
+    if (!s.signed_in) return show('signin')
+    $('status-text').textContent = s.live ? `Live · tracking as ${s.email}` : `Tracking as ${s.email}`
+    $('status-dot').className = 'dot' + (s.live ? ' live-dot' : '')
+    renderHero(s)
+    $('today').textContent = fmt(s.today_sec)
+    $('week').textContent = fmt(s.week_sec)
+    $('watching').textContent = s.watching ? `Watching ${s.watching} game${s.watching === 1 ? '' : 's'}` : ''
+    renderMeter(s); renderSync(s)
+    const sw = $('autostart'); sw.setAttribute('aria-checked', String(!!s.autostart)); sw.disabled = !s.autostart_supported
+    sw.title = s.autostart_supported ? '' : 'Available in the installed app'
+    $('acct-email').textContent = s.email || ''
+    show(view === 'signin' ? 'signin' : 'dash')
+  }
+
+  async function refresh(view) {
+    const a = api(); if (!a) return
+    try { render(await a.get_state(), view) } catch (e) { /* keep last good state */ }
+  }
+  window.deckd = { refresh }
+
+  // ── events ────────────────────────────────────────────────
+  $('btn-min').onclick = () => api() && api().minimize()
+  $('btn-close').onclick = () => api() && api().hide()
+  $('signup').onclick = () => api() && api().open_signup()
+  $('open-dash').onclick = () => api() && api().open_dashboard()
+  $('reveal').onclick = () => {
+    const p = $('password'), on = p.type === 'password'
+    p.type = on ? 'text' : 'password'; $('reveal').textContent = on ? 'Hide' : 'Show'; $('reveal').setAttribute('aria-pressed', String(on))
+  }
+  $('autostart').onclick = async () => {
+    const sw = $('autostart'); if (sw.disabled) return
+    const next = sw.getAttribute('aria-checked') !== 'true'
+    sw.setAttribute('aria-checked', String(next))
+    sw.setAttribute('aria-checked', String(await api().set_autostart(next)))
+  }
+  $('signout').onclick = async () => { render(await api().sign_out()) }
+  $('signin-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const btn = $('si-submit'), err = $('si-error')
+    err.classList.remove('on'); btn.disabled = true; btn.classList.add('busy'); $('si-label').textContent = 'Signing in…'
+    try {
+      const res = await api().sign_in($('email').value, $('password').value)
+      if (res.ok) { $('password').value = ''; render(res.state) }
+      else { err.textContent = res.error; err.classList.add('on'); $('password').select() }
+    } finally { btn.disabled = false; btn.classList.remove('busy'); $('si-label').textContent = 'Sign in' }
+  })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && api()) api().hide() })
+
+  window.addEventListener('pywebviewready', () => refresh())
+  setInterval(() => { if (!document.hidden && state && state.signed_in) refresh() }, 5000)
+  if (api()) refresh()
+})()
+</script>
+</body>
+</html>

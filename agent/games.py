@@ -53,3 +53,9 @@ def get_tracked(refresh: bool = False) -> dict[str, str]:
             # than raising up into the watcher thread.
             print(f"[deckd] games.get_tracked: scan raised: {exc}", file=sys.stderr)
     return _cache
+
+
+def cached_count() -> int:
+    """How many games are currently being watched, without triggering a scan
+    (a full scan can take ~40 s; the watcher refreshes the cache itself)."""
+    return len(_cache)
