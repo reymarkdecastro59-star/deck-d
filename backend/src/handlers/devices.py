@@ -1,9 +1,19 @@
 import json
 from aws_lambda_powertools import Logger
 from pydantic import ValidationError
-from shared.auth import get_user_id
+from typing import Optional
+
+from shared.auth import get_user_email, get_user_id
 from shared.cors import CORS_HEADERS
-from shared.db import list_devices, rename_device, revoke_device, get_device
+from shared.db import (
+    DeviceLimitExceededError,
+    get_device,
+    get_or_create_profile,
+    list_devices,
+    rename_device,
+    revoke_device,
+    touch_device,
+)
 from shared.schemas import DevicePatch
 
 logger = Logger(service="deckd-devices")
@@ -16,6 +26,8 @@ def handler(event: dict, context) -> dict:
         path_params = event.get("pathParameters") or {}
         device_id = path_params.get("device_id")
 
+        if method == "POST" and (event.get("resource") or "").endswith("/heartbeat"):
+            return _heartbeat(event)
         if method == "GET":
             return _list(event)
         if method == "PATCH" and device_id:
@@ -26,6 +38,41 @@ def handler(event: dict, context) -> dict:
     except Exception:
         logger.exception("Unhandled error in devices handler")
         return _resp(500, {"error": "Internal server error"})
+
+
+def _get_header(event: dict, name: str) -> Optional[str]:
+    """Case-insensitive header lookup — API Gateway may lowercase names."""
+    target = name.lower()
+    for k, v in (event.get("headers") or {}).items():
+        if k.lower() == target:
+            return v
+    return None
+
+
+def _heartbeat(event: dict) -> dict:
+    """Agent check-in (every sync tick). Registers/touches the device so a
+    signed-in tracker shows as connected before any game is played — devices
+    used to be registered only by the first session upload, so the web showed
+    "No tracker yet" for a perfectly healthy agent. Same revoke and device-cap
+    rules as session uploads.
+    """
+    user_id = get_user_id(event)
+    device_id = _get_header(event, "X-Device-Id")
+    if not device_id:
+        return _resp(400, {"error": "missing_device_id"})
+    device_name = _get_header(event, "X-Device-Name") or "unnamed-device"
+
+    get_or_create_profile(user_id, get_user_email(event))
+    try:
+        device = touch_device(user_id, device_id, device_name)
+    except DeviceLimitExceededError:
+        logger.warning("device_limit_exceeded", user_id=user_id)
+        return _resp(429, {"error": "device_limit_exceeded"})
+    if device.is_revoked:
+        # Don't echo the client-supplied id back (existence oracle).
+        logger.warning("heartbeat_from_revoked_device", user_id=user_id)
+        return _resp(403, {"error": "device_revoked"})
+    return _resp(200, {"device": _serialize(device)})
 
 
 def _list(event: dict) -> dict:

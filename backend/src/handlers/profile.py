@@ -5,9 +5,9 @@ import boto3
 from botocore.exceptions import ClientError
 from aws_lambda_powertools import Logger
 from pydantic import ValidationError
-from shared.auth import get_user_id
+from shared.auth import get_user_email, get_user_id
 from shared.cors import CORS_HEADERS
-from shared.db import get_profile, update_profile, delete_all_user_items
+from shared.db import get_or_create_profile, update_profile, delete_all_user_items
 from shared.schemas import ProfilePatch
 
 logger = Logger(service="deckd-profile")
@@ -34,11 +34,11 @@ def handler(event: dict, context) -> dict:
 
 
 def _get_profile(event: dict) -> dict:
+    # Every Cognito-authenticated user has a profile. It used to be created
+    # only when the tracker uploaded a first session, so Settings returned
+    # 404 for every new account; create it on first read instead.
     user_id = get_user_id(event)
-    profile = get_profile(user_id)
-    if profile is None:
-        logger.warning("profile_not_found", user_id=user_id)
-        return _resp(404, {"error": "Profile not found"})
+    profile = get_or_create_profile(user_id, get_user_email(event))
     logger.info("profile_fetched", user_id=user_id)
     return _resp(200, {"profile": profile.to_item()})
 
@@ -52,6 +52,7 @@ def _patch_profile(event: dict) -> dict:
         return _resp(400, {"error": "validation_failed", "details": e.errors(include_context=False, include_input=False, include_url=False)})
 
     editable = {k: v for k, v in data.model_dump(exclude_none=True).items()}
+    get_or_create_profile(user_id, get_user_email(event))
     profile = update_profile(user_id, **editable)
     if profile is None:
         logger.warning("profile_not_found_for_patch", user_id=user_id)
