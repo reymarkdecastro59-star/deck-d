@@ -1,4 +1,4 @@
-import { getIdToken, logout } from '@/auth/cognito'
+import { getIdToken, getValidIdToken, logout } from '@/auth/cognito'
 
 const API_URL = import.meta.env.VITE_API_URL
 
@@ -21,6 +21,13 @@ const IS_CONFIGURED =
  * duplicate it.
  */
 export async function apiFetch(path, options = {}) {
+  // DEV-only sample data for /dev/preview (visual QA without an account).
+  // `import.meta.env.DEV` is false in production builds, so this branch and
+  // the fixture module are removed from the shipped bundle.
+  if (import.meta.env.DEV && typeof window !== 'undefined' && window.__DECKD_MOCK_API__) {
+    const { mockFetch } = await import('@/dev/mockApi')
+    return mockFetch(path, options)
+  }
   if (!IS_CONFIGURED) {
     throw new Error(
       'Backend not configured. Set VITE_API_URL in web/.env.local to your API Gateway URL, then restart the dev server.'
@@ -28,7 +35,15 @@ export async function apiFetch(path, options = {}) {
   }
 
   const { raw = false, headers: callerHeaders, ...fetchOptions } = options
-  const token = getIdToken()
+  // Refresh the 1-hour Cognito token before it expires. If a session existed
+  // but can't be refreshed, end it cleanly instead of sending a dead token.
+  const hadSession = !!getIdToken()
+  const token = await getValidIdToken()
+  if (hadSession && !token) {
+    logout()
+    window.location.href = '/login'
+    throw new Error('Your session expired. Please sign in again.')
+  }
   const headers = {
     ...(raw ? {} : { 'Content-Type': 'application/json' }),
     ...(token && { Authorization: `Bearer ${token}` }),

@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
-import { Download, Info } from 'lucide-react'
+import { CheckCircle2, Download, Info, Loader2 } from 'lucide-react'
 import { Button } from '@/app/ui/Button'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { OnboardingLayout } from '../OnboardingLayout'
+import { useConnectedTracker } from '../useConnectedTracker'
+import { relativeTime } from '@/lib/format'
 
 const OS_OPTIONS = [
   { value: 'windows', label: 'Windows' },
@@ -41,6 +43,9 @@ const INSTRUCTIONS = {
 
 export function DownloadStep({ state, onChange, onNext, onBack, stepIdx, totalSteps }) {
   const detected = useMemo(() => detectOS(), [])
+  // Live check: the tracker checks in on launch, so an installed, signed-in
+  // tracker is recognised here without the user having to say so.
+  const { device } = useConnectedTracker()
   const os = state.tracker.os ?? detected
 
   const setOs = (v) => onChange({ ...state, tracker: { ...state.tracker, os: v } })
@@ -62,9 +67,13 @@ export function DownloadStep({ state, onChange, onNext, onBack, stepIdx, totalSt
       lede="A tiny background app detects the games you play so your sessions land here automatically. It's optional — you can also record manually — but tracking is where DECK'D shines."
       footer={
         <>
-          <Button variant="quiet" onClick={proceed}>
-            I'll do this later
-          </Button>
+          {device ? (
+            <span />
+          ) : (
+            <Button variant="quiet" onClick={proceed}>
+              I'll do this later
+            </Button>
+          )}
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={onBack}>
               Back
@@ -77,6 +86,8 @@ export function DownloadStep({ state, onChange, onNext, onBack, stepIdx, totalSt
       }
     >
       <div className="space-y-6">
+        <TrackerStatus device={device} />
+
         <div>
           <p className="mb-3 text-[13px] font-medium text-[var(--app-fg)]">Your platform</p>
           <SegmentedControl items={OS_OPTIONS} value={os} onChange={setOs} />
@@ -134,5 +145,35 @@ export function DownloadStep({ state, onChange, onNext, onBack, stepIdx, totalSt
         </div>
       </div>
     </OnboardingLayout>
+  )
+}
+
+function TrackerStatus({ device }) {
+  if (device) {
+    return (
+      <div
+        role="status"
+        className="flex items-start gap-3 rounded-[var(--app-r-3)] border border-[var(--app-accent)] bg-[var(--app-accent-tint)] p-4"
+      >
+        <CheckCircle2
+          className="mt-0.5 h-5 w-5 shrink-0 text-[var(--app-accent)]"
+          strokeWidth={2}
+        />
+        <div>
+          <p className="text-[15px] font-semibold text-[var(--app-fg-strong)]">
+            Tracker connected: {device.device_name}
+          </p>
+          <p className="mt-0.5 text-[13px] text-[var(--app-fg-muted)]">
+            Checked in {relativeTime(device.last_seen)}. You&apos;re all set. Continue to finish.
+          </p>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div role="status" className="flex items-center gap-2.5 text-[13px] text-[var(--app-fg-muted)]">
+      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" strokeWidth={2} />
+      Waiting for the tracker… it connects within a minute of starting.
+    </div>
   )
 }

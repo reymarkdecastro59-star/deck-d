@@ -3,7 +3,9 @@ import {
   CognitoUser,
   AuthenticationDetails,
   CognitoUserAttribute,
+  CognitoRefreshToken,
 } from 'amazon-cognito-identity-js'
+import { isExpiringSoon } from '@/lib/jwt'
 
 const userPool = new CognitoUserPool({
   UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
@@ -105,6 +107,49 @@ export function logout() {
 
 export function getIdToken() {
   return sessionStorage.getItem('id_token')
+}
+
+// One refresh at a time: a page fires several API calls at once, and they
+// must all wait on the same refresh rather than each spending the token.
+let refreshing = null
+
+/**
+ * A usable ID token, refreshed first if it expires within 2 minutes.
+ * Cognito ID tokens last 1 hour; the refresh token was stored at login but
+ * never used, so after an hour every request failed (and the gateway's
+ * CORS-less 401 surfaced as "Failed to fetch"). Resolves null when there is
+ * no session or the refresh token itself is rejected — callers then sign out.
+ */
+export async function getValidIdToken() {
+  const current = sessionStorage.getItem('id_token')
+  if (!current) return null
+  if (!isExpiringSoon(current)) return current
+  if (!refreshing) {
+    refreshing = refreshIdToken().finally(() => {
+      refreshing = null
+    })
+  }
+  return refreshing
+}
+
+function refreshIdToken() {
+  const refreshToken = sessionStorage.getItem('refresh_token')
+  const email = sessionStorage.getItem('email')
+  if (!refreshToken || !email) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    const user = new CognitoUser({
+      Username: email,
+      Pool: userPool,
+      Storage: window.sessionStorage,
+    })
+    user.refreshSession(new CognitoRefreshToken({ RefreshToken: refreshToken }), (err, session) => {
+      if (err || !session) return resolve(null)
+      const idToken = session.getIdToken().getJwtToken()
+      sessionStorage.setItem('id_token', idToken)
+      activeUser = user
+      resolve(idToken)
+    })
+  })
 }
 
 export function getEmail() {
