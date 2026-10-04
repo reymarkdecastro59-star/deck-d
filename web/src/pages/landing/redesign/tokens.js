@@ -9,21 +9,40 @@ export const SECTIONS = [
   { id: 'contact', label: 'Contact' },
 ]
 
-// Fractional scroll ranges per section — must sum to 1.
-// Non-uniform on purpose: transition sections get more scroll runway
-// than "hold" sections so the camera has room to breathe.
+// Five equal timeline chapters. Each chapter owns two viewport-heights of
+// physical scroll, giving the camera and text enough room to arrive, hold,
+// and depart without rushing the reader.
 export const SECTION_RANGES = {
-  home: [0.0, 0.15],
-  about: [0.15, 0.5],
-  how: [0.5, 0.8],
-  features: [0.8, 0.95],
-  contact: [0.95, 1.0],
+  home: [0.0, 0.2],
+  about: [0.2, 0.4],
+  how: [0.4, 0.6],
+  features: [0.6, 0.8],
+  contact: [0.8, 1.0],
 }
 
-// Total scroll height = SECTION_COUNT * VIEWPORT_MULT * 100vh.
-// 5 sections × 2vh each = 1000vh (10 viewport heights).
-// Shorter than kprverse (18vh) — DECK'D content is denser.
+// Navigation targets the beginning of each timeline chapter.
+export const STICKY_RANGES = {
+  home: [0.0, 0.2],
+  about: [0.2, 0.4],
+  how: [0.4, 0.6],
+  features: [0.6, 0.8],
+  contact: [0.8, 1.0],
+}
+
+// Chapter divider peaks — narrow windows at the transition midpoints so the
+// divider only appears while the browser is snapping to the next section.
+export const DIVIDER_RANGES = {
+  about: { enterStart: 0.16, enterEnd: 0.2, exitEnd: 0.24 },
+  how: { enterStart: 0.36, enterEnd: 0.4, exitEnd: 0.44 },
+  features: { enterStart: 0.56, enterEnd: 0.6, exitEnd: 0.64 },
+  contact: { enterStart: 0.76, enterEnd: 0.8, exitEnd: 0.84 },
+}
+
+// Five 200vh slots plus one trailing viewport produce 1000vh of scrollable
+// distance after the browser subtracts the visible viewport. That maps every
+// 0.2 timeline chapter to exactly 200vh and keeps anchor positions aligned.
 export const VIEWPORT_MULT = 2
+export const TRAILING_VIEWPORTS = 1
 
 export const COLORS = {
   bg: '#05061a',

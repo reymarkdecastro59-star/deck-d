@@ -1,108 +1,169 @@
-import { lazy, Suspense, useMemo, useRef } from 'react'
-import { motion, useScroll, useTransform, useMotionValueEvent } from 'motion/react'
-import { useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { useScroll, useMotionValueEvent } from 'motion/react'
+import { useMotionPreference } from './hooks/useMotionPreference'
 import TopNav from './chrome/TopNav'
-import { LeftRail, RightRail } from './chrome/SideRails'
 import { useSmoothScroll } from './hooks/useSmoothScroll'
-import { SECTIONS, SECTION_RANGES, VIEWPORT_MULT, COLORS, TYPE } from './tokens'
-
+import { TimelineProvider } from './hooks/useMasterTimeline'
+import {
+  PHASE_ORDER,
+  PHASES,
+  NAV_POINTS,
+  QA_POINTS,
+  phaseIndex,
+  FEATURE_BEATS,
+} from './hooks/timelinePhases'
+import HeroSection from './sections/HeroSection'
+import AboutSection from './sections/AboutSection'
+import HowItWorksSection from './sections/HowItWorksSection'
+import FeaturesSection from './sections/FeaturesSection'
+import ContactSection from './sections/ContactSection'
 const LandingCanvas = lazy(() => import('./canvas/LandingCanvas'))
-
-// Landing root.
-// Owns:
-//  - Lenis smooth scroll
-//  - Global scroll progress (motion value) driving the R3F canvas + rails
-//  - Fixed chrome (nav + rails)
-//  - Section anchor stack that provides the scroll runway
-// Individual section content will land in ./sections/* as subsequent commits.
-
+const PrevisOverlay = lazy(() => import('./canvas/PrevisOverlay'))
+const SCROLL_VH = 2400
 export default function Landing() {
-  useSmoothScroll(true)
-
+  const preference = useMotionPreference()
+  const previs = import.meta.env.DEV && new URLSearchParams(window.location.search).has('previs')
+  const [reducedPreview, setReducedPreview] = useState(false)
+  const reducedMotion = preference || reducedPreview
+  useSmoothScroll(!reducedMotion)
   const rootRef = useRef(null)
+  const initialHashHandled = useRef(false)
   const { scrollYProgress } = useScroll({ target: rootRef, offset: ['start start', 'end end'] })
   const [activeSection, setActiveSection] = useState(0)
-
-  // Snap the section number to the segment that owns the current scroll fraction.
-  useMotionValueEvent(scrollYProgress, 'change', (p) => {
-    const idx = SECTIONS.findIndex((s) => {
-      const [start, end] = SECTION_RANGES[s.id]
-      return p >= start && p < end
-    })
-    const resolved = idx === -1 ? SECTIONS.length - 1 : idx
-    if (resolved !== activeSection) setActiveSection(resolved)
-  })
-
-  const railProgress = useTransform(scrollYProgress, (v) => v)
-
-  // Scroll runway: 5 sections × VIEWPORT_MULT × 100vh.
-  const totalHeightVh = SECTIONS.length * VIEWPORT_MULT * 100
-
-  const handleNavigate = (idx) => {
-    if (typeof window === 'undefined') return
-    const [start] = SECTION_RANGES[SECTIONS[idx].id]
-    // Aim slightly past the segment start so the section content is centered.
-    const targetY = document.documentElement.scrollHeight * start + 4
-    window.scrollTo({ top: targetY, behavior: 'smooth' })
-  }
-
-  const stageStyle = useMemo(
-    () => ({
-      position: 'relative',
-      background: COLORS.bgDeep,
-      color: COLORS.fg,
-      minHeight: `${totalHeightVh}vh`,
-    }),
-    [totalHeightVh]
+  useMotionValueEvent(scrollYProgress, 'change', (p) => setActiveSection(phaseIndex(p)))
+  const navigate = useCallback(
+    (id, point) => {
+      const target = point ?? NAV_POINTS[id]
+      if (target == null) return
+      const total = rootRef.current.offsetHeight - window.innerHeight
+      window.scrollTo({
+        top: rootRef.current.offsetTop + total * target,
+        behavior: reducedMotion ? 'instant' : 'smooth',
+      })
+      window.history.replaceState(null, '', `#${id}`)
+    },
+    [reducedMotion]
   )
-
+  useEffect(() => {
+    const go = () => {
+      const hash = window.location.hash.slice(1)
+      const feature = FEATURE_BEATS.find((b) => b.id === hash)
+      if (NAV_POINTS[hash] != null || feature)
+        navigate(
+          hash,
+          feature
+            ? feature.id === 'customize'
+              ? feature.end - 0.004
+              : feature.start + 0.023
+            : undefined
+        )
+    }
+    // A preference change replaces navigate, but must not replay the URL hash.
+    const frame = initialHashHandled.current
+      ? null
+      : requestAnimationFrame(() => {
+          initialHashHandled.current = true
+          go()
+        })
+    window.addEventListener('hashchange', go)
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      window.removeEventListener('hashchange', go)
+    }
+  }, [navigate])
+  const qa = import.meta.env.DEV && new URLSearchParams(window.location.search).has('scene-qa')
   return (
-    <div ref={rootRef} style={stageStyle}>
-      {/* Background R3F canvas — position: fixed, behind everything */}
-      <Suspense fallback={null}>
-        <LandingCanvas scrollProgress={scrollYProgress} />
-      </Suspense>
-
-      {/* Persistent chrome */}
-      <TopNav activeSection={activeSection} onNavigate={handleNavigate} />
-      <LeftRail />
-      <RightRail activeSection={activeSection} scrollProgress={railProgress} />
-
-      {/* Section anchor stack — each is 2 viewport heights of scroll runway.
-          Content will be rendered as sticky children so the same DOM stays
-          in view while scroll advances the R3F camera + Motion animations. */}
-      {SECTIONS.map((section) => (
-        <section
-          key={section.id}
-          id={section.id}
-          style={{
-            position: 'relative',
-            height: `${VIEWPORT_MULT * 100}vh`,
-            width: '100%',
-          }}
+    <TimelineProvider
+      scrollProgress={scrollYProgress}
+      navigate={navigate}
+      reducedOverride={reducedPreview}
+      previs={previs}
+    >
+      <main ref={rootRef} className="deck-journey" style={{ height: `${SCROLL_VH + 100}vh` }}>
+        <div className="deck-atmosphere" />
+        <Suspense
+          fallback={
+            <div className="deck-loading" role="status">
+              Preparing your deck…
+            </div>
+          }
         >
-          <SectionPlaceholder label={section.label} />
-        </section>
-      ))}
-    </div>
-  )
-}
-
-// Temporary placeholder — replaced section-by-section starting with §1 HOME.
-function SectionPlaceholder({ label }) {
-  return (
-    <div className="sticky top-0 flex h-dvh items-center justify-center" style={{ zIndex: 2 }}>
-      <div
-        style={{
-          fontFamily: TYPE.mono,
-          fontSize: '11px',
-          letterSpacing: '3px',
-          color: 'rgba(255,255,255,0.35)',
-          textTransform: 'uppercase',
-        }}
-      >
-        [ {label} — awaiting section build ]
-      </div>
-    </div>
+          <LandingCanvas previs={previs} />
+        </Suspense>
+        <TopNav activeSection={activeSection} onNavigate={(i) => navigate(PHASE_ORDER[i])} />
+        {PHASE_ORDER.map((id) => (
+          <div
+            key={id}
+            id={id}
+            className="deck-anchor"
+            style={{ top: `${PHASES[id][0] * SCROLL_VH}vh` }}
+          />
+        ))}
+        {!previs && (
+          <>
+            <HeroSection />
+            <AboutSection />
+            <HowItWorksSection />
+            <FeaturesSection />
+            <ContactSection />
+          </>
+        )}
+        {previs && (
+          <Suspense fallback={null}>
+            <PrevisOverlay
+              reduced={reducedPreview}
+              onReduced={setReducedPreview}
+              onSeek={(p) =>
+                window.scrollTo({
+                  top:
+                    rootRef.current.offsetTop +
+                    (rootRef.current.offsetHeight - window.innerHeight) * p,
+                  behavior: 'instant',
+                })
+              }
+            />
+          </Suspense>
+        )}
+        <div className="deck-scroll-cue" aria-hidden="true">
+          <span>
+            {activeSection === 4 ? 'YOUR GAMES. YOUR NEXT CHAPTER.' : 'SCROLL TO EXPLORE'}
+          </span>
+          <i />
+        </div>
+        <div className="deck-chapter-count" aria-hidden="true">
+          0{activeSection + 1}
+          <span> / 05</span>
+        </div>
+        {qa && (
+          <div className="deck-qa">
+            <label htmlFor="scene-landmark">Scene landmark</label>
+            <select
+              id="scene-landmark"
+              defaultValue=""
+              onChange={(e) => {
+                const p = QA_POINTS[e.target.value]
+                const total = rootRef.current.offsetHeight - window.innerHeight
+                window.scrollTo({ top: total * p, behavior: 'instant' })
+              }}
+            >
+              <option value="" disabled>
+                Choose frame
+              </option>
+              {Object.keys(QA_POINTS).map((k) => (
+                <option key={k}>{k}</option>
+              ))}
+            </select>
+            <label>
+              <input
+                type="checkbox"
+                checked={reducedPreview}
+                onChange={(e) => setReducedPreview(e.target.checked)}
+              />
+              Reduced motion preview
+            </label>
+          </div>
+        )}
+      </main>
+    </TimelineProvider>
   )
 }

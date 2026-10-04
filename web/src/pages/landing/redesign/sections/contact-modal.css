@@ -1,0 +1,170 @@
+.deck-contact-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(2, 3, 12, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.deck-contact-modal__panel {
+  width: min(100%, 560px);
+  box-sizing: border-box;
+  padding: 28px;
+  border: 1px solid rgba(76, 125, 255, 0.55);
+  border-radius: 2px;
+  background: rgba(6, 8, 25, 0.98);
+  box-shadow: 0 24px 80px rgba(0, 0, 20, 0.55);
+  color: #ffffff;
+}
+
+.deck-contact-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.deck-contact-modal__label {
+  margin: 0 0 8px;
+  color: #7a7a9e;
+  font-family: 'Intel One Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+}
+
+.deck-contact-modal__header h2 {
+  margin: 0;
+  font-family: 'Intel One Mono', ui-monospace, monospace;
+  font-size: clamp(28px, 5vw, 42px);
+  line-height: 1.05;
+}
+
+.deck-contact-modal__close {
+  padding: 8px 10px;
+  border: 1px solid rgba(122, 122, 158, 0.45);
+  border-radius: 2px;
+  background: transparent;
+  color: #ffffff;
+  font-family: 'Intel One Mono', ui-monospace, monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.deck-contact-modal__close:hover {
+  border-color: #4c7dff;
+  background: rgba(76, 125, 255, 0.22);
+}
+
+.deck-contact-modal__close:focus-visible {
+  outline: 2px solid #4c7dff;
+  outline-offset: 3px;
+}
+
+.deck-contact-modal .deck-section__form {
+  display: grid;
+  gap: 16px;
+  margin-top: 28px;
+}
+.deck-contact-modal .deck-section__form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.deck-contact-modal .deck-section__form-field label {
+  color: #7a7a9e;
+  font-family: 'Intel One Mono', ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.deck-contact-modal .deck-section__form-field input,
+.deck-contact-modal .deck-section__form-field textarea {
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid rgba(88, 125, 220, 0.42);
+  border-radius: 2px;
+  background: rgba(5, 8, 28, 0.82);
+  color: #ffffff;
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+}
+.deck-contact-modal .deck-section__form-field input:focus,
+.deck-contact-modal .deck-section__form-field textarea:focus {
+  border-color: #4c7dff;
+  outline: 2px solid #4c7dff;
+  outline-offset: 2px;
+}
+.deck-contact-modal .deck-section__form-field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+.deck-contact-modal .deck-section__form-status {
+  margin: 0;
+  font-family: 'Intel One Mono', ui-monospace, monospace;
+  font-size: 13px;
+  opacity: 1;
+  transition: opacity 160ms ease;
+}
+.deck-contact-modal .deck-section__form-status[data-state='success'] {
+  color: #22d3ee;
+}
+.deck-contact-modal .deck-section__form-status[data-state='error'] {
+  color: #ef4444;
+}
+.deck-contact-modal .deck-section__form-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  justify-self: start;
+  padding: 10px 18px;
+  border: 1px solid rgba(76, 125, 255, 0.58);
+  border-radius: 2px;
+  background: rgba(76, 125, 255, 0.22);
+  color: #ffffff;
+  font-family: 'Intel One Mono', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+.deck-contact-modal .deck-section__form-submit:hover:not(:disabled) {
+  background: #4c7dff;
+}
+.deck-contact-modal .deck-section__form-submit:focus-visible {
+  outline: 2px solid #4c7dff;
+  outline-offset: 3px;
+}
+.deck-contact-modal .deck-section__form-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 640px) {
+  .deck-contact-modal {
+    place-items: start center;
+    padding: 16px;
+  }
+
+  .deck-contact-modal__panel {
+    padding: 20px;
+  }
+
+  .deck-contact-modal .deck-section__form-field textarea {
+    min-height: 96px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .deck-contact-modal {
+    backdrop-filter: none;
+    background: #02030c;
+  }
+}

@@ -1,26 +1,29 @@
 import { useEffect } from 'react'
 import Lenis from 'lenis'
 
-// Singleton Lenis instance — mount once at the landing root.
-// Native scroll position stays authoritative (Lenis writes to window.scrollY),
-// so Motion's useScroll and native anchor links keep working.
+// Lenis smooth scroll. Was previously disabled while the landing used
+// `scroll-snap-type: y mandatory` — the two mechanisms fought each other and
+// caused jitter. Snap has been removed, so Lenis is back on and drives the
+// window scroll directly.
+//
+// Motion's useScroll listens to native `scroll` events on the window, which
+// Lenis still emits as it updates document.scrollTop each frame. So the
+// scrollYProgress motion value continues to work unchanged — Lenis just makes
+// the underlying scrollTop travel with ease.
+
 export function useSmoothScroll(enabled = true) {
   useEffect(() => {
     if (!enabled) return
-    if (typeof window === 'undefined') return
-    // Respect reduced motion — do not smooth scroll.
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    if (mq.matches) return
 
     const lenis = new Lenis({
-      duration: 1.15,
+      duration: 1.05,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
       wheelMultiplier: 1,
-      touchMultiplier: 1.2,
+      touchMultiplier: 1.4,
     })
 
-    let rafId
+    let rafId = 0
     const raf = (time) => {
       lenis.raf(time)
       rafId = requestAnimationFrame(raf)

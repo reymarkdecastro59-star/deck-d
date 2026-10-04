@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { SECTIONS, COLORS, TYPE } from '../tokens'
 
 // LEFT RAIL — crosshair mark + rolling atmospheric text.
@@ -17,10 +17,12 @@ const AMBIENT_LINES = [
 
 export function LeftRail() {
   const [idx, setIdx] = useState(0)
+  const reducedMotion = useReducedMotion()
   useEffect(() => {
+    if (reducedMotion) return
     const t = setInterval(() => setIdx((i) => (i + 1) % AMBIENT_LINES.length), 4000)
     return () => clearInterval(t)
-  }, [])
+  }, [reducedMotion])
 
   return (
     <div
