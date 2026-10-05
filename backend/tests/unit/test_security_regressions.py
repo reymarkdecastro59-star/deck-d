@@ -81,3 +81,58 @@ def test_a_squatted_title_does_not_block_other_titles(ddb_table, monkeypatch):
     db_module.put_session(real)
     game = json.loads(dashboard(make_event(method="GET"), FakeLambdaContext())["body"])["games"][0]
     assert game["game"] == "VALORANT" and game["background_image"]
+
+
+# ── review 3: key collision, lookup budget, refresh fairness ─────────────────
+
+def test_exe_names_with_separator_are_refused():
+    import pytest
+    from pydantic import ValidationError
+    from shared.schemas import SessionCreate
+    base = dict(session_id="s", game_name="G", started_at=1000, ended_at=1600, duration_sec=600)
+    with pytest.raises(ValidationError):
+        SessionCreate(game_exe="valorant.exe#t:valorant", **base)
+    with pytest.raises(ValidationError):
+        SessionCreate(game_exe="a\x00.exe", **base)
+    with pytest.raises(ValidationError):
+        SessionCreate(game_exe="ok.exe", **{**base, "game_name": "x" * 201})
+    assert SessionCreate(game_exe="Hades II.exe", **base).game_exe == "Hades II.exe"
+
+
+def test_cache_id_cannot_be_forged_through_the_exe():
+    from shared.canonical import cache_id
+    assert cache_id("valorant.exe#t:valorant", "") != cache_id("valorant.exe", "VALORANT")
+
+
+def test_daily_lookup_budget_per_user(ddb_table, monkeypatch):
+    import shared.metadata_ingest as mi
+    calls = []
+    monkeypatch.setattr(mi, "fetch_metadata", lambda exe, name=None: calls.append(exe) or _meta(exe, name, title=name))
+    monkeypatch.setattr(mi, "MAX_LOOKUPS_PER_USER_PER_DAY", 4)
+    for i in range(3):  # 3 requests x 3 new titles each
+        batch = [Session(user_id=USER_ID, session_id=f"s{i}{j}", game_exe=f"g{i}{j}.exe", game_name=f"G{i}{j}",
+                         started_at=1000, ended_at=4600, duration_sec=3600, label="tracked") for j in range(3)]
+        mi.ensure_metadata(batch)
+    assert len(calls) == 4  # budget, not 9
+
+
+def test_refresh_ranks_shared_titles_and_caps_one_account(ddb_table, monkeypatch):
+    import time
+    from unittest.mock import MagicMock
+    import handlers.refresh_metadata as refresh_module
+    now = int(time.time())
+    for i in range(30):  # one account floods made-up titles
+        db_module.put_session(Session(user_id="flooder", session_id=f"f{i}", game_exe="x.exe",
+                                      game_name=f"Junk {i}", started_at=now - 100, ended_at=now - 50,
+                                      duration_sec=50, label="tracked"))
+    for u in ("u1", "u2"):  # a real game two players report
+        db_module.put_session(Session(user_id=u, session_id=f"r-{u}", game_exe="hades2.exe",
+                                      game_name="Hades II", started_at=now - 100, ended_at=now - 50,
+                                      duration_sec=50, label="tracked"))
+    fetch = MagicMock(side_effect=lambda exe, name=None: _meta(exe, name, title=name))
+    monkeypatch.setattr(refresh_module, "fetch_metadata", fetch)
+    monkeypatch.setenv("PER_USER_NEW_PER_RUN", "5")
+    refresh_module.handler({}, None)
+    looked_up = [c.args for c in fetch.call_args_list]
+    assert looked_up[0] == ("hades2.exe", "Hades II")  # shared title first
+    assert sum(1 for exe, _ in looked_up if exe == "x.exe") == 5  # flood capped

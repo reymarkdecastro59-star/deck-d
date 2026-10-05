@@ -55,7 +55,9 @@ def cache_id(exe: str, title: Optional[str]) -> str:
     title get their own id per exe + title, so no single upload can claim
     ("squat") the slot an exe's other titles need. Exe-only lookups keep
     the plain exe id."""
-    exe = (exe or "").lower()
+    # '#' is the separator, so it can never come from the exe itself (the
+    # schema refuses it too; this keeps old/odd rows from colliding).
+    exe = (exe or "").lower().replace("#", "")
     key = _loose(title)
     return f"{exe}#t:{key}" if key else exe
 

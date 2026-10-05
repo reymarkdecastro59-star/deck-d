@@ -141,7 +141,7 @@ def handler(event: dict, context) -> dict:
     cached_map: dict[str, dict] = {item.get("cache_id") or item["game_exe"]: item for item in cached}
 
     # ── b) new exe + title pairs from recent sessions ─────────────────────
-    recent = iter_recent_session_games(session_since)  # {cache id: (exe, title)}
+    recent = iter_recent_session_games(session_since)  # {cache id: {exe, title, users}}
     new_exes = recent.keys() - cached_map.keys()
 
     # ── c) stale items that need refresh ──────────────────────────────────
@@ -157,7 +157,22 @@ def handler(event: dict, context) -> dict:
                 stale_exes.append(exe)
 
     # ── d) merge queues (new first, then stale) and cap ───────────────────
-    queue = list(new_exes) + stale_exes
+    # Titles reported by more players go first, and one account can claim
+    # at most PER_USER_NEW_PER_RUN new lookups — so a flood of made-up titles
+    # from one account can't starve real games of the per-run budget.
+    per_user_cap = _env_int("PER_USER_NEW_PER_RUN", 20)
+    spent: dict[str, int] = {}
+    ranked_new: list[str] = []
+    for cid in sorted(new_exes, key=lambda c: len(recent[c]["users"]), reverse=True):
+        users = recent[cid]["users"]
+        if len(users) == 1:
+            (only,) = users
+            if spent.get(only, 0) >= per_user_cap:
+                continue
+            spent[only] = spent.get(only, 0) + 1
+        ranked_new.append(cid)
+    new_exes = set(ranked_new)
+    queue = ranked_new + stale_exes
     queue = queue[:max_calls]
 
     processed = 0
@@ -167,7 +182,7 @@ def handler(event: dict, context) -> dict:
 
     for cid in queue:
         if cid in recent:
-            exe, title = recent[cid]
+            exe, title = recent[cid]["exe"], recent[cid]["title"]
         else:  # stale cache entry: re-run the same lookup it was made with
             exe, title = cached_map[cid]["game_exe"], cached_map[cid].get("title")
         metadata = with_cache_id(fetch_metadata(exe, title), exe, title)

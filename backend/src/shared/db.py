@@ -177,12 +177,13 @@ def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
     return items
 
 
-def iter_recent_session_games(since_epoch: int, max_items: int = 10_000) -> dict[str, tuple[str, str]]:
-    """{cache id: (lowercased exe, reported title)} for recent sessions —
-    one entry per distinct exe + title (see canonical.cache_id)."""
+def iter_recent_session_games(since_epoch: int, max_items: int = 10_000) -> dict[str, dict]:
+    """{cache id: {"exe", "title", "users"}} for recent sessions — one entry
+    per distinct exe + title (see canonical.cache_id); `users` is the set of
+    accounts reporting it, so the refresh job can rank by real popularity."""
     from .canonical import cache_id
 
-    seen: dict[str, tuple[str, str]] = {}
+    seen: dict[str, dict] = {}
     count = 0
     kwargs: dict = {
         "FilterExpression": (
@@ -195,7 +196,8 @@ def iter_recent_session_games(since_epoch: int, max_items: int = 10_000) -> dict
             exe = item.get("game_exe", "").lower()
             if exe:
                 name = item.get("game_name") or ""
-                seen.setdefault(cache_id(exe, name), (exe, name))
+                entry = seen.setdefault(cache_id(exe, name), {"exe": exe, "title": name, "users": set()})
+                entry["users"].add(item.get("user_id") or item.get("pk", ""))
             count += 1
             if count >= max_items:
                 return seen

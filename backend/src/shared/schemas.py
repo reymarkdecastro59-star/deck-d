@@ -15,10 +15,15 @@ _DURATION_TOLERANCE_SEC = 5
 _MAX_SESSION_LENGTH_SEC = 12 * 60 * 60
 
 
+# Exe names become part of shared cache keys (GAME#{exe}#t:{title}); '#'
+# and control characters are refused so no exe can imitate another key.
+_EXE_PATTERN = r"^[^#\x00-\x1f\x7f]+$"
+
+
 class SessionCreate(BaseModel):
     session_id: str
-    game_exe: str
-    game_name: str
+    game_exe: str = Field(min_length=1, max_length=260, pattern=_EXE_PATTERN)
+    game_name: str = Field(min_length=1, max_length=200)
     started_at: int
     ended_at: int
     duration_sec: int = Field(gt=0)
