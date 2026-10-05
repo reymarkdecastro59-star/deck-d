@@ -9,6 +9,7 @@ import requests
 from shared.db import iter_all_game_metadata, iter_recent_session_exes, put_game_metadata, put_trending_daily
 from shared.rawg import fetch_metadata
 from shared import steam_api
+from shared.safe_log import safe_error
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def _fetch_rawg_trending() -> list[dict] | None:
     try:
         resp = requests.get(f"{_RAWG_BASE}/games", params=params, timeout=15)
     except requests.RequestException as exc:
-        logger.error("trending_rawg_request_error err=%s", exc)
+        logger.error("trending_rawg_request_error err=%s", safe_error(exc))
         return None
 
     if not resp.ok:

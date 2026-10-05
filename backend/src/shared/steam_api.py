@@ -24,6 +24,8 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 
+from .safe_log import safe_error
+
 logger = logging.getLogger(__name__)
 
 OPENID_LOGIN = "https://steamcommunity.com/openid/login"
@@ -90,7 +92,7 @@ def verify_assertion(params: dict, expected_return_to: str) -> Optional[str]:
             return None
         return match.group(1)
     except requests.RequestException as exc:
-        logger.warning("steam_openid_error err=%s", exc)
+        logger.warning("steam_openid_error err=%s", safe_error(exc))
         return None
 
 
@@ -134,7 +136,7 @@ def owned_games(steamid: str) -> list[dict]:
             timeout=15,
         )
     except requests.RequestException as exc:
-        raise SteamUnavailable(str(exc)) from exc
+        raise SteamUnavailable(safe_error(exc)) from exc
     if resp.status_code in (401, 403):
         raise SteamUnavailable(f"HTTP {resp.status_code}")
     if not resp.ok:
@@ -199,7 +201,7 @@ def most_played(limit: int = 10) -> Optional[list[dict]]:
             return None
         ranks = (resp.json().get("response") or {}).get("ranks") or []
     except (requests.RequestException, ValueError) as exc:
-        logger.error("steam_charts_error err=%s", exc)
+        logger.error("steam_charts_error err=%s", safe_error(exc))
         return None
 
     games: list[dict] = []

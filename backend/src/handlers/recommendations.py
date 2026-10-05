@@ -7,6 +7,8 @@ from typing import Optional
 
 from aws_lambda_powertools import Logger
 from shared.auth import get_user_id
+from shared.safe_log import safe_error
+from shared.canonical import meta_applies
 from shared.bedrock import (
     BedrockBadResponseError,
     BedrockError,
@@ -149,10 +151,15 @@ def _genre_based_for(user_id: str, user_hash: str) -> Optional[list]:
 
     exes = sorted({s.game_exe.lower() for s in sessions if s.game_exe})
     metadata_by_exe = batch_get_game_metadata(exes)
+    # Shared cache: only entries that apply to this user's own titles.
+    titles_by_exe: dict[str, set] = defaultdict(set)
+    for s in sessions:
+        if s.game_exe:
+            titles_by_exe[s.game_exe.lower()].add(s.game_name)
     resolved_metas = {
         exe: m
         for exe, m in metadata_by_exe.items()
-        if not m.get("resolution_failed", False)
+        if any(meta_applies(m, t) for t in titles_by_exe.get(exe, ()))
     }
     if len(resolved_metas) < _GENRE_MIN_RESOLVED_GAMES:
         return None
@@ -225,10 +232,15 @@ def _top_picks_for(
 
     exes = sorted({s.game_exe.lower() for s in sessions if s.game_exe})
     metadata_by_exe = batch_get_game_metadata(exes)
+    # Shared cache: only entries that apply to this user's own titles.
+    titles_by_exe: dict[str, set] = defaultdict(set)
+    for s in sessions:
+        if s.game_exe:
+            titles_by_exe[s.game_exe.lower()].add(s.game_name)
     resolved_metas = {
         exe: m
         for exe, m in metadata_by_exe.items()
-        if not m.get("resolution_failed", False)
+        if any(meta_applies(m, t) for t in titles_by_exe.get(exe, ()))
     }
     if len(resolved_metas) < _LLM_MIN_RESOLVED_GAMES:
         return None
@@ -297,7 +309,7 @@ def _top_picks_for(
             "bedrock_call_failed",
             user_id_hash=user_hash,
             err=type(exc).__name__,
-            err_msg=str(exc)[:200],
+            err_msg=safe_error(exc, 200),
         )
         return _serve_stale_or_none(cached_item)
     except Exception as exc:
@@ -308,7 +320,7 @@ def _top_picks_for(
             "top_picks_unexpected_error",
             user_id_hash=user_hash,
             err=type(exc).__name__,
-            err_msg=str(exc)[:200],
+            err_msg=safe_error(exc, 200),
         )
         return _serve_stale_or_none(cached_item)
 
