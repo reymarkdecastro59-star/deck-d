@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { LayoutGrid, ListChecks } from 'lucide-react'
 import { StageGlyph } from '@/app/ui/brand'
 import { cn } from '@/app/ui/cn'
@@ -19,7 +19,8 @@ const NAV = [
   { to: '/library', label: 'Library', Icon: LayoutGrid },
   { to: '/sessions', label: 'Sessions', Icon: ListChecks },
   { to: '/stats', label: 'Stats', Icon: glyph('understand') },
-  { to: '/for-you', label: 'For You', Icon: glyph('recommend') },
+  // Trending lives behind the For You / Trending tabs on phone.
+  { to: '/for-you', label: 'For You', Icon: glyph('recommend'), also: ['/trending'] },
 ]
 
 export function BottomNav() {
@@ -43,36 +44,42 @@ export function BottomNav() {
   )
 }
 
-function BottomNavItem({ to, label, Icon }) {
+function BottomNavItem({ to, label, Icon, also }) {
+  const { pathname } = useLocation()
+  const inSection = (also ?? []).some((p) => pathname.startsWith(p))
   return (
     <NavLink
       to={to}
-      className={({ isActive }) =>
-        cn(
+      className={({ isActive: exact }) => {
+        const isActive = exact || inSection
+        return cn(
           'group relative flex h-full min-h-[44px] flex-col items-center justify-center gap-1',
           'text-[12px] leading-none transition-colors [transition-duration:var(--app-dur-1)]',
           isActive
             ? 'font-semibold text-[var(--app-fg-strong)]'
             : 'app-wt-small text-[var(--app-fg-muted)]'
         )
-      }
+      }}
       end={to === '/dashboard'}
     >
-      {({ isActive }) => (
-        <>
-          <span
-            className={cn(
-              'inline-flex rounded-full px-3.5 py-0.5',
-              isActive
-                ? 'bg-[var(--app-accent-tint)] text-[var(--app-accent)]'
-                : 'text-[var(--app-fg-dim)]'
-            )}
-          >
-            <Icon className="h-[20px] w-[20px]" strokeWidth={1.6} />
-          </span>
-          <span className="truncate">{label}</span>
-        </>
-      )}
+      {({ isActive: exact }) => {
+        const isActive = exact || inSection
+        return (
+          <>
+            <span
+              className={cn(
+                'inline-flex rounded-full px-3.5 py-0.5',
+                isActive
+                  ? 'bg-[var(--app-accent-tint)] text-[var(--app-accent)]'
+                  : 'text-[var(--app-fg-dim)]'
+              )}
+            >
+              <Icon className="h-[20px] w-[20px]" strokeWidth={1.6} />
+            </span>
+            <span className="truncate">{label}</span>
+          </>
+        )
+      }}
     </NavLink>
   )
 }

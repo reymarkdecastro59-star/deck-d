@@ -19,9 +19,11 @@ const Library = lazy(() => import('@/pages/library/Library'))
 const GameDetail = lazy(() => import('@/pages/library/GameDetail'))
 const Sessions = lazy(() => import('@/pages/sessions/Sessions'))
 const Recommendations = lazy(() => import('@/pages/recommendations/Recommendations'))
+const Trending = lazy(() => import('@/pages/trending/Trending'))
 const Stats = lazy(() => import('@/pages/stats/Stats'))
 const Devices = lazy(() => import('@/pages/devices/Devices'))
 const Settings = lazy(() => import('@/pages/settings/Settings'))
+const SteamCallback = lazy(() => import('@/pages/settings/SteamCallback'))
 const Terms = lazy(() => import('@/pages/legal/Terms'))
 const Privacy = lazy(() => import('@/pages/legal/Privacy'))
 const Signup = lazy(() => import('@/pages/signup/Signup'))
@@ -88,11 +90,14 @@ export default function App() {
                 <Route path="/library/:key" element={<GameDetail />} />
                 <Route path="/sessions" element={<Sessions />} />
                 <Route path="/for-you" element={<Recommendations />} />
+                <Route path="/trending" element={<Trending />} />
                 {/* Old address — kept so bookmarks and notification links still land. */}
                 <Route path="/recommendations" element={<Navigate to="/for-you" replace />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/devices" element={<Devices />} />
                 <Route path="/settings" element={<Settings />} />
+                {/* Steam's sign-in page returns here (Connect Steam). */}
+                <Route path="/settings/steam" element={<SteamCallback />} />
               </Route>
 
               {/* Catch-all — must be last. Renders outside AppShell so it works
@@ -100,6 +105,14 @@ export default function App() {
               {DevPreview && (
                 <Route path="/dev/preview" element={<DevPreview />}>
                   <Route path="overview" element={<Dashboard />} />
+                  <Route path="library" element={<Library />} />
+                  <Route path="library/:key" element={<GameDetail />} />
+                  <Route path="sessions" element={<Sessions />} />
+                  <Route path="for-you" element={<Recommendations tabsBase="/dev/preview" />} />
+                  <Route path="trending" element={<Trending tabsBase="/dev/preview" />} />
+                  <Route path="stats" element={<Stats />} />
+                  <Route path="devices" element={<Devices />} />
+                  <Route path="settings" element={<Settings />} />
                 </Route>
               )}
               {DevDownloadStep && (

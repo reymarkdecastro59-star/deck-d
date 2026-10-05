@@ -1,5 +1,12 @@
 import { Link, NavLink } from 'react-router-dom'
-import { ArrowRight, LayoutGrid, ListChecks, MonitorSmartphone, Settings } from 'lucide-react'
+import {
+  ArrowRight,
+  Flame,
+  LayoutGrid,
+  ListChecks,
+  MonitorSmartphone,
+  Settings,
+} from 'lucide-react'
 import { cn } from '@/app/ui/cn'
 import { Art } from '@/app/ui/Art'
 import { StageGlyph, Wordmark } from '@/app/ui/brand'
@@ -44,7 +51,14 @@ const GROUPS = [
   {
     label: 'Recommend',
     glyph: 'recommend',
-    items: [{ to: '/for-you', label: 'For You', icon: <StageGlyph name="recommend" size={18} /> }],
+    items: [
+      { to: '/for-you', label: 'For You', icon: <StageGlyph name="recommend" size={18} /> },
+      {
+        to: '/trending',
+        label: 'Trending',
+        icon: <Flame className="h-[18px] w-[18px]" strokeWidth={1.6} />,
+      },
+    ],
   },
 ]
 
@@ -80,14 +94,19 @@ export function Sidebar() {
 
       <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3.5 pb-4">
         {GROUPS.map((g, i) => (
-          <div key={g.label ?? i} className={cn(i > 0 && 'mt-5')}>
+          <div key={g.label ?? i} className={cn(i > 0 && 'mt-6')}>
+            {/* Group labels name the list (aria-labelledby), not destinations:
+                plain text in the tertiary tone, no icon, so they never read as
+                nav items. Not headings, so the page's h1 stays first. */}
             {g.label && (
-              <div className="mb-1.5 flex items-center gap-2 px-3 text-[13px] font-semibold text-[var(--app-fg-muted)]">
-                <StageGlyph name={g.glyph} size={14} className="text-[var(--app-fg-dim)]" />
+              <div
+                id={`nav-${g.glyph}`}
+                className="mb-1 px-3 text-[13px] font-medium text-[var(--app-fg-dim)]"
+              >
                 {g.label}
               </div>
             )}
-            <ul className="space-y-0.5">
+            <ul aria-labelledby={g.label ? `nav-${g.glyph}` : undefined} className="space-y-0.5">
               {g.items.map((item) => (
                 <li key={item.to}>
                   <SidebarItem {...item} />

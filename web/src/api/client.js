@@ -57,8 +57,17 @@ export async function apiFetch(path, options = {}) {
     throw new Error('Unauthorized')
   }
   if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`API ${res.status}: ${body}`)
+    const text = await res.text()
+    const err = new Error(`API ${res.status}: ${text}`)
+    // Structured details for callers that branch on the API's error code
+    // (e.g. 409 steam_private); the message is unchanged for everyone else.
+    err.status = res.status
+    try {
+      err.body = JSON.parse(text)
+    } catch {
+      err.body = null
+    }
+    throw err
   }
   if (raw) return res
 

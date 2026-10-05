@@ -1,55 +1,43 @@
 import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import { cn } from '@/app/ui/cn'
-import { coverBackgroundStyle } from '@/app/ui/safeUrl'
+import { Art } from '@/app/ui/Art'
 import { formatHours } from '@/lib/format'
 import { gameKey } from './gameKey'
-import { CoverFallback } from './CoverFallback'
 
 /**
- * Cover-first tile for the Library grid and dashboard rails. Deliberately
- * chrome-less: no border, no filled card. The cover artwork carries the
- * visual weight; a tight two-line title + a single quiet metric sit under
- * it. On pointer hover we tint the cover down slightly so the eye reads
- * "target" without any glow or scale animation.
- *
- * Density is controlled by the parent grid — this component only handles
- * one game's anatomy.
+ * Library tile — the same anatomy as Overview's Continue tile (UX v2 R2/R10):
+ * a ≥180px 3:4 cover is the largest object, the whole tile is the target
+ * (2px lift + art "breathe" via .app-tile), then a 16px title and one
+ * readable metric. Without art, Art shows the game's identity colour.
  */
 function GameTileImpl({ game, className, showMetric = true }) {
-  const cover = coverBackgroundStyle(game.background_image)
   const name = game.game || game.name || 'Untitled'
-  const key = gameKey(game)
   return (
     <Link
-      to={`/library/${key}`}
-      title={name}
-      className={cn(
-        'group block rounded-[var(--app-r-2)]',
-        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--app-accent)]',
-        className
-      )}
+      to={`/library/${gameKey(game)}`}
+      className={cn('app-tile flex flex-col gap-3 rounded-[var(--app-r-3)]', className)}
     >
-      <div
-        aria-hidden
-        className="relative aspect-[3/4] overflow-hidden rounded-[var(--app-r-2)] bg-[var(--app-bg-3)]"
-        style={cover}
-      >
-        {!cover && <CoverFallback name={name} />}
-        {/* Quiet pointer-hover tint. No scale, no glow — just enough to
-            signal the whole tile is a target. */}
-        <div className="absolute inset-0 bg-[var(--app-bg)] opacity-0 transition-opacity [transition-duration:var(--app-dur-2)] group-hover:opacity-[0.12]" />
-      </div>
-      <div className="mt-2.5">
-        <div className="line-clamp-2 min-h-[34px] text-[13px] leading-[1.35] text-[var(--app-fg)]">
+      <Art
+        game={game}
+        name={name}
+        portrait
+        className="app-frame aspect-[3/4] rounded-[var(--app-r-3)]"
+      />
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="line-clamp-2 text-[16px] font-semibold leading-[1.3] text-[var(--app-fg-strong)]">
           {name}
-        </div>
+        </span>
         {showMetric && game.total_hours != null && (
-          <div className="app-num mt-1 text-[11px] text-[var(--app-fg-dim)]">
-            {formatHours(game.total_hours)} h · {formatHours(game.decay_hours ?? 0)} h momentum
-          </div>
+          <span className="app-wt-small text-[14px] text-[var(--app-fg-muted)]">
+            <span className="app-num">{formatHours(game.total_hours)} h</span> played
+            {/* Launcher-imported hours are labelled so the source is never a mystery. */}
+            {!game.tracked_hours && game.imported_from?.length > 0 && (
+              <> · from {game.imported_from.join(', ')}</>
+            )}
+          </span>
         )}
-      </div>
+      </span>
     </Link>
   )
 }
