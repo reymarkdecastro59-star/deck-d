@@ -157,6 +157,11 @@ def fetch_metadata(exe_lower: str, name: Optional[str] = None) -> dict:
         # Every call would 401; record the miss (retried daily) and skip the network.
         logger.error("rawg_api_key_missing exe=%s", exe_lower)
         return _failed_item(exe_lower, fetched_at)
+    # A title with no letters or digits ("!!!") can't be keyed per title
+    # (it would land in the shared exe-only slot), so it is ignored and the
+    # exe name decides: the client then has no say over a shared entry.
+    if not _loose(name or ""):
+        name = None
     search_name = (name or "").strip() or _exe_to_name(exe_lower)
 
     try:

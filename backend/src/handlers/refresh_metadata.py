@@ -165,11 +165,13 @@ def handler(event: dict, context) -> dict:
     ranked_new: list[str] = []
     for cid in sorted(new_exes, key=lambda c: len(recent[c]["users"]), reverse=True):
         users = recent[cid]["users"]
-        if len(users) == 1:
-            (only,) = users
-            if spent.get(only, 0) >= per_user_cap:
-                continue
-            spent[only] = spent.get(only, 0) + 1
+        # Every reporting account is charged, and a title is looked up only
+        # while at least one of them has budget left — so a few colluding
+        # accounts can't escape the cap by co-reporting each other's titles.
+        if not any(spent.get(u, 0) < per_user_cap for u in users):
+            continue
+        for u in users:
+            spent[u] = spent.get(u, 0) + 1
         ranked_new.append(cid)
     new_exes = set(ranked_new)
     queue = ranked_new + stale_exes

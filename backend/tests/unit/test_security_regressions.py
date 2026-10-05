@@ -136,3 +136,34 @@ def test_refresh_ranks_shared_titles_and_caps_one_account(ddb_table, monkeypatch
     looked_up = [c.args for c in fetch.call_args_list]
     assert looked_up[0] == ("hades2.exe", "Hades II")  # shared title first
     assert sum(1 for exe, _ in looked_up if exe == "x.exe") == 5  # flood capped
+
+
+# ── review 4: symbol-only titles, colluding accounts ─────────────────────────
+
+def test_symbol_only_title_is_ignored_for_the_lookup(monkeypatch):
+    import shared.rawg as rawg
+    seen = {}
+    def fake_get(url, params=None, timeout=None):
+        seen["search"] = params.get("search")
+        from unittest.mock import MagicMock
+        return MagicMock(ok=True, status_code=200, json=lambda: {"results": []})
+    monkeypatch.setattr(rawg.requests, "get", fake_get)
+    rawg.fetch_metadata("valorant.exe", "!!!")
+    assert seen["search"] == "Valorant"  # exe name, not the client's text
+
+
+def test_two_colluding_accounts_still_capped(ddb_table, monkeypatch):
+    import time
+    from unittest.mock import MagicMock
+    import handlers.refresh_metadata as refresh_module
+    now = int(time.time())
+    for i in range(30):
+        for u in ("sybil-a", "sybil-b"):  # both report every junk title
+            db_module.put_session(Session(user_id=u, session_id=f"{u}-{i}", game_exe="x.exe",
+                                          game_name=f"Junk {i}", started_at=now - 100, ended_at=now - 50,
+                                          duration_sec=50, label="tracked"))
+    fetch = MagicMock(side_effect=lambda exe, name=None: _meta(exe, name, title=name))
+    monkeypatch.setattr(refresh_module, "fetch_metadata", fetch)
+    monkeypatch.setenv("PER_USER_NEW_PER_RUN", "5")
+    refresh_module.handler({}, None)
+    assert fetch.call_count == 5
