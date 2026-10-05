@@ -144,9 +144,9 @@ def batch_get_game_metadata(exe_lowers: list[str]) -> dict[str, dict]:
         }
         resp = resource.batch_get_item(RequestItems=request)
         for item in resp.get("Responses", {}).get(table_name, []):
-            exe = item.get("game_exe")
-            if exe:
-                out[exe] = item
+            cid = item.get("cache_id") or item.get("game_exe")
+            if cid:
+                out[cid] = item
         unprocessed = resp.get("UnprocessedKeys", {}).get(table_name, {}).get("Keys", [])
         if unprocessed:
             logger.warning(
@@ -175,6 +175,35 @@ def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
             break
         kwargs["ExclusiveStartKey"] = last_key
     return items
+
+
+def iter_recent_session_games(since_epoch: int, max_items: int = 10_000) -> dict[str, tuple[str, str]]:
+    """{cache id: (lowercased exe, reported title)} for recent sessions —
+    one entry per distinct exe + title (see canonical.cache_id)."""
+    from .canonical import cache_id
+
+    seen: dict[str, tuple[str, str]] = {}
+    count = 0
+    kwargs: dict = {
+        "FilterExpression": (
+            Attr("sk").begins_with("SESSION#") & Attr("started_at").gte(since_epoch)
+        ),
+    }
+    while True:
+        resp = get_table().scan(**kwargs)
+        for item in resp.get("Items", []):
+            exe = item.get("game_exe", "").lower()
+            if exe:
+                name = item.get("game_name") or ""
+                seen.setdefault(cache_id(exe, name), (exe, name))
+            count += 1
+            if count >= max_items:
+                return seen
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    return seen
 
 
 def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> dict[str, str]:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 from .db import batch_get_game_metadata, put_game_metadata
+from .canonical import cache_id, with_cache_id
 from .rawg import fetch_metadata
 
 logger = logging.getLogger(__name__)
@@ -20,18 +21,27 @@ MAX_LOOKUPS_PER_REQUEST = 3
 def ensure_metadata(sessions) -> int:
     """Look up unseen exes (by the title the tracker reported). Returns lookups made."""
     try:
-        wanted: dict[str, str] = {}
+        wanted: dict[str, tuple[str, str]] = {}  # cache id -> (exe, title)
         for s in sessions:
             exe = (s.game_exe or "").lower()
-            if exe and exe not in wanted:
-                wanted[exe] = s.game_name or ""
+            if exe:
+                wanted.setdefault(cache_id(exe, s.game_name), (exe, s.game_name or ""))
         if not wanted:
             return 0
-        known = batch_get_game_metadata(list(wanted))
-        missing = [exe for exe in wanted if exe not in known][:MAX_LOOKUPS_PER_REQUEST]
-        for exe in missing:
-            put_game_metadata(fetch_metadata(exe, wanted[exe]))
-        return len(missing)
+        known = batch_get_game_metadata(sorted(set(wanted) | {exe for exe, _ in wanted.values()}))
+
+        def covered(cid: str, exe: str) -> bool:
+            if cid in known:
+                return True
+            legacy = known.get(exe)  # a resolved exe-only entry serves every title
+            return bool(legacy and not legacy.get("resolution_failed")
+                        and not legacy.get("resolved_from_title"))
+
+        missing = [cid for cid, (exe, _) in wanted.items() if not covered(cid, exe)]
+        for cid in missing[:MAX_LOOKUPS_PER_REQUEST]:
+            exe, title = wanted[cid]
+            put_game_metadata(with_cache_id(fetch_metadata(exe, title), exe, title))
+        return len(missing[:MAX_LOOKUPS_PER_REQUEST])
     except Exception:  # noqa: BLE001 — never break session ingest
         logger.exception("ensure_metadata_failed")
         return 0

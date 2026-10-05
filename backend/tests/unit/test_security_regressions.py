@@ -59,3 +59,25 @@ def test_matching_title_still_gets_art(ddb_table):
                                   ended_at=4600, duration_sec=3600, label="tracked"))
     game = json.loads(dashboard(make_event(method="GET"), FakeLambdaContext())["body"])["games"][0]
     assert game["rawg_id"] == 666 and game["background_image"]
+
+
+def test_a_squatted_title_does_not_block_other_titles(ddb_table, monkeypatch):
+    """Someone uploads a common exe with a bogus title first; a real player's
+    title still gets its own lookup and art (no shared slot to squat)."""
+    import shared.metadata_ingest as mi
+    from shared.canonical import cache_id
+
+    def fake_fetch(exe, name=None):
+        return _meta(exe, name or "x", title=name)
+
+    monkeypatch.setattr(mi, "fetch_metadata", fake_fetch)
+    squat = Session(user_id="attacker", session_id="a1", game_exe="VALORANT.exe", game_name="Bogus",
+                    started_at=1000, ended_at=4600, duration_sec=3600, label="tracked")
+    real = Session(user_id=USER_ID, session_id="s1", game_exe="VALORANT.exe", game_name="VALORANT",
+                   started_at=1000, ended_at=4600, duration_sec=3600, label="tracked")
+    assert mi.ensure_metadata([squat]) == 1
+    assert mi.ensure_metadata([real]) == 1  # its own entry, not blocked
+    assert db_module.get_game_metadata(cache_id("valorant.exe", "VALORANT"))["name"] == "VALORANT"
+    db_module.put_session(real)
+    game = json.loads(dashboard(make_event(method="GET"), FakeLambdaContext())["body"])["games"][0]
+    assert game["game"] == "VALORANT" and game["background_image"]

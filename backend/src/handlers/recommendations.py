@@ -8,7 +8,7 @@ from typing import Optional
 from aws_lambda_powertools import Logger
 from shared.auth import get_user_id
 from shared.safe_log import safe_error
-from shared.canonical import meta_applies
+from shared.canonical import lookup_meta, metadata_ids
 from shared.bedrock import (
     BedrockBadResponseError,
     BedrockError,
@@ -149,18 +149,13 @@ def _genre_based_for(user_id: str, user_hash: str) -> Optional[list]:
     if not sessions:
         return None
 
-    exes = sorted({s.game_exe.lower() for s in sessions if s.game_exe})
-    metadata_by_exe = batch_get_game_metadata(exes)
+    metadata = batch_get_game_metadata(metadata_ids(sessions))
     # Shared cache: only entries that apply to this user's own titles.
-    titles_by_exe: dict[str, set] = defaultdict(set)
+    resolved_metas: dict[str, dict] = {}
     for s in sessions:
-        if s.game_exe:
-            titles_by_exe[s.game_exe.lower()].add(s.game_name)
-    resolved_metas = {
-        exe: m
-        for exe, m in metadata_by_exe.items()
-        if any(meta_applies(m, t) for t in titles_by_exe.get(exe, ()))
-    }
+        meta = lookup_meta(s, metadata) if s.game_exe else None
+        if meta:
+            resolved_metas.setdefault(s.game_exe.lower(), meta)
     if len(resolved_metas) < _GENRE_MIN_RESOLVED_GAMES:
         return None
 
@@ -230,18 +225,13 @@ def _top_picks_for(
     if not sessions:
         return None
 
-    exes = sorted({s.game_exe.lower() for s in sessions if s.game_exe})
-    metadata_by_exe = batch_get_game_metadata(exes)
+    metadata = batch_get_game_metadata(metadata_ids(sessions))
     # Shared cache: only entries that apply to this user's own titles.
-    titles_by_exe: dict[str, set] = defaultdict(set)
+    resolved_metas: dict[str, dict] = {}
     for s in sessions:
-        if s.game_exe:
-            titles_by_exe[s.game_exe.lower()].add(s.game_name)
-    resolved_metas = {
-        exe: m
-        for exe, m in metadata_by_exe.items()
-        if any(meta_applies(m, t) for t in titles_by_exe.get(exe, ()))
-    }
+        meta = lookup_meta(s, metadata) if s.game_exe else None
+        if meta:
+            resolved_metas.setdefault(s.game_exe.lower(), meta)
     if len(resolved_metas) < _LLM_MIN_RESOLVED_GAMES:
         return None
 

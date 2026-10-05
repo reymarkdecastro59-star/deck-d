@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import shared.metadata_ingest as mi
 from shared import db as db_module
+from shared.canonical import cache_id
 from shared.models import Session
 
 
@@ -22,7 +23,8 @@ def test_looks_up_unseen_exe_with_title(ddb_table, monkeypatch):
     monkeypatch.setattr(mi, "fetch_metadata", fetch)
     assert mi.ensure_metadata([_s("Lurk.exe", "Lurk in the Dark : Prologue", "s1")]) == 1
     fetch.assert_called_once_with("lurk.exe", "Lurk in the Dark : Prologue")
-    assert db_module.get_game_metadata("lurk.exe")["rawg_id"] == 7
+    stored = db_module.get_game_metadata(cache_id("lurk.exe", "Lurk in the Dark : Prologue"))
+    assert stored["rawg_id"] == 7 and stored["game_exe"] == "lurk.exe"
 
 
 def test_skips_known_exes_and_caps_lookups(ddb_table, monkeypatch):

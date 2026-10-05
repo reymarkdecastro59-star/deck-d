@@ -1,5 +1,7 @@
 """Unit tests for handlers.refresh_metadata cron handler."""
 import time
+
+from shared.canonical import cache_id
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
@@ -106,7 +108,8 @@ def test_discovers_new_exe_from_sessions(ddb_table, monkeypatch):
 
     assert result["new"] >= 1
     assert result["processed"] >= 1
-    item = db_module.get_game_metadata("newgame.exe")
+    # Looked up by the reported title, so stored per exe + title.
+    item = db_module.get_game_metadata(cache_id("newgame.exe", "Test Game"))
     assert item is not None
     assert item["rawg_id"] == 42
 
@@ -182,7 +185,7 @@ def test_records_resolution_failed(ddb_table, monkeypatch):
     result = refresh_module.handler({}, None)
 
     assert result["failed"] >= 1
-    item = db_module.get_game_metadata("mystery.exe")
+    item = db_module.get_game_metadata(cache_id("mystery.exe", "Test Game"))
     assert item is not None
     assert item["resolution_failed"] is True
     assert item["rawg_id"] is None

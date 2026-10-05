@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from aws_lambda_powertools import Logger
 from shared.auth import get_user_id
-from shared.canonical import build_display, canonical_key, unique_exes
+from shared.canonical import build_display, canonical_key, metadata_ids
 from shared.cors import CORS_HEADERS
 from shared.db import batch_get_game_metadata, get_sessions, get_sessions_in_range
 from shared.decay import HALF_LIFE_DAYS, decay_sec_from_intervals
@@ -60,7 +60,7 @@ def handler(event: dict, context) -> dict:
         # installed via different launchers (Steam vs Epic) merge into one
         # dashboard row via their shared rawg_id. Falls back to exe then
         # game_name when the cache hasn't caught up.
-        metadata_by_exe = batch_get_game_metadata(unique_exes(sessions))
+        metadata_by_exe = batch_get_game_metadata(metadata_ids(sessions))
 
         # Group sessions per canonical key and collect intervals for union math.
         # raw_sum_by_key preserves the naive additive total so the UI can

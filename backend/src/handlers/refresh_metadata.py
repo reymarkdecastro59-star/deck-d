@@ -6,7 +6,8 @@ from decimal import Decimal
 
 import requests
 
-from shared.db import iter_all_game_metadata, iter_recent_session_exes, put_game_metadata, put_trending_daily
+from shared.canonical import with_cache_id
+from shared.db import iter_all_game_metadata, iter_recent_session_games, put_game_metadata, put_trending_daily
 from shared.rawg import fetch_metadata
 from shared import steam_api
 from shared.safe_log import safe_error
@@ -137,11 +138,11 @@ def handler(event: dict, context) -> dict:
 
     # ── a) existing cache items ────────────────────────────────────────────
     cached = iter_all_game_metadata()
-    cached_map: dict[str, dict] = {item["game_exe"]: item for item in cached}
+    cached_map: dict[str, dict] = {item.get("cache_id") or item["game_exe"]: item for item in cached}
 
-    # ── b) new exes from recent sessions ──────────────────────────────────
-    recent_exes = iter_recent_session_exes(session_since)  # {exe: game_name}
-    new_exes = recent_exes.keys() - cached_map.keys()
+    # ── b) new exe + title pairs from recent sessions ─────────────────────
+    recent = iter_recent_session_games(session_since)  # {cache id: (exe, title)}
+    new_exes = recent.keys() - cached_map.keys()
 
     # ── c) stale items that need refresh ──────────────────────────────────
     stale_exes: list[str] = []
@@ -164,11 +165,15 @@ def handler(event: dict, context) -> dict:
     refreshed = 0
     failed_count = 0
 
-    for exe in queue:
-        metadata = fetch_metadata(exe, recent_exes.get(exe) or cached_map.get(exe, {}).get("name"))
+    for cid in queue:
+        if cid in recent:
+            exe, title = recent[cid]
+        else:  # stale cache entry: re-run the same lookup it was made with
+            exe, title = cached_map[cid]["game_exe"], cached_map[cid].get("title")
+        metadata = with_cache_id(fetch_metadata(exe, title), exe, title)
         put_game_metadata(metadata)
         processed += 1
-        if exe in new_exes:
+        if cid in new_exes:
             new_count += 1
         else:
             refreshed += 1
