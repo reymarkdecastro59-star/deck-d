@@ -5,6 +5,7 @@ import { Button } from '@/app/ui/Button'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { Input } from '@/app/ui/Input'
+import { PageFrame, PageHeader } from '@/app/ui/PageHeader'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useLibrary } from './useLibrary'
@@ -19,11 +20,9 @@ const SORTS = [
 const EMPTY_GAMES = []
 
 /**
- * Library. The composition is deliberately toolbar + grid, not a big
- * PageHeader block followed by another toolbar. The dominant visual is
- * the game covers themselves. Search is a filter (attribute reduction);
- * sort reorders. When a search is active a small applied-filter chip
- * appears so the user always sees what's constraining the visible set.
+ * Library (UX v2 §5.3): page title, then one toolbar row, then the cover
+ * grid — covers are the dominant visual. Search filters, sort reorders; an
+ * applied-filter chip always shows what's constraining the visible set.
  */
 export default function Library() {
   const { summary, loading, error, reload } = useLibrary()
@@ -46,10 +45,7 @@ export default function Library() {
   const hasQuery = query.trim().length > 0
 
   return (
-    <div
-      className="mx-auto w-full px-6 py-8 lg:px-10"
-      style={{ maxWidth: 'var(--app-content-max)' }}
-    >
+    <PageFrame>
       <Toolbar
         gameCount={games.length}
         loading={loading}
@@ -61,16 +57,16 @@ export default function Library() {
       />
 
       {hasQuery && (
-        <div className="mt-4 flex items-center gap-2">
-          <span className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">Filtered by</span>
+        <div className="-mt-2 mb-6 flex flex-wrap items-center gap-2.5 text-[14px]">
+          <span className="app-wt-small text-[var(--app-fg-muted)]">Filtered by</span>
           <AppliedChip label={`“${query}”`} onClear={() => setQuery('')} />
-          <span className="app-num text-[11.5px] text-[var(--app-fg-dim)]">
+          <span className="app-num app-wt-small text-[var(--app-fg-muted)]">
             {filtered.length.toLocaleString()} of {games.length.toLocaleString()}
           </span>
         </div>
       )}
 
-      <div className="mt-6">
+      <div>
         {loading && <LibrarySkeleton />}
 
         {error && (
@@ -109,16 +105,20 @@ export default function Library() {
         )}
 
         {!loading && !error && filtered.length > 0 && (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+          <div className={GRID}>
             {filtered.map((g) => (
               <GameTile key={g.rawg_id ?? g.slug ?? g.game} game={g} />
             ))}
           </div>
         )}
       </div>
-    </div>
+    </PageFrame>
   )
 }
+
+// ≥180px covers on desktop (UX v2 R2); two columns on phone.
+const GRID =
+  'grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-x-6 sm:gap-y-10'
 
 /**
  * Toolbar row. Left: page label + game count as one typographic unit.
@@ -126,33 +126,31 @@ export default function Library() {
  */
 function Toolbar({ gameCount, loading, query, onQueryChange, sort, onSortChange, showControls }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <div className="flex items-baseline gap-3">
-        <h1
-          className="font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(20px, 1.8vw, 26px)' }}
-        >
-          Library
-        </h1>
-        <span className="app-num text-[13px] text-[var(--app-fg-dim)]">
-          {loading ? '' : gameCount.toLocaleString()}
-        </span>
-      </div>
-      {showControls && (
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-          <div className="min-w-[220px] max-w-[360px] flex-1">
-            <Input
-              leadingIcon={<Search />}
-              placeholder="Search titles…"
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              size="sm"
-            />
-          </div>
-          <SegmentedControl items={SORTS} value={sort} onChange={onSortChange} size="sm" />
-        </div>
-      )}
-    </div>
+    <PageHeader
+      title="Library"
+      count={loading ? null : gameCount}
+      countLabel={gameCount === 1 ? 'game' : 'games'}
+      lede={loading ? null : 'Everything the tracker has recorded, across every launcher.'}
+      toolbar={
+        showControls && (
+          <>
+            <div className="min-w-[220px] max-w-[400px] flex-1">
+              <Input
+                leadingIcon={<Search />}
+                placeholder="Search your library"
+                aria-label="Search your library"
+                value={query}
+                onChange={(e) => onQueryChange(e.target.value)}
+              />
+            </div>
+            <span className="ml-auto inline-flex items-center gap-2.5">
+              <span className="app-wt-small text-[14px] text-[var(--app-fg-muted)]">Sort</span>
+              <SegmentedControl items={SORTS} value={sort} onChange={onSortChange} />
+            </span>
+          </>
+        )
+      }
+    />
   )
 }
 
@@ -161,22 +159,23 @@ function AppliedChip({ label, onClear }) {
     <button
       type="button"
       onClick={onClear}
-      className="inline-flex items-center gap-1.5 rounded-[var(--app-r-pill)] border border-[var(--app-border)] bg-[var(--app-bg-2)] py-1 pl-2.5 pr-1.5 text-[12px] text-[var(--app-fg)] transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)]"
+      aria-label={`Clear filter ${label}`}
+      className="inline-flex h-8 items-center gap-1.5 rounded-[var(--app-r-pill)] border border-[var(--app-border)] bg-[var(--app-bg-2)] pl-3 pr-2 text-[14px] text-[var(--app-fg)] transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)]"
     >
       <span className="max-w-[220px] truncate">{label}</span>
-      <X className="h-3 w-3 text-[var(--app-fg-muted)]" strokeWidth={2} />
+      <X className="h-3.5 w-3.5 text-[var(--app-fg-muted)]" strokeWidth={2} />
     </button>
   )
 }
 
 function LibrarySkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+    <div className={GRID}>
       {Array.from({ length: 14 }).map((_, i) => (
         <div key={i}>
-          <Skeleton className="aspect-[3/4] rounded-[var(--app-r-2)]" />
-          <Skeleton className="mt-3 h-3 w-4/5" />
-          <Skeleton className="mt-2 h-2.5 w-2/5" />
+          <Skeleton className="aspect-[3/4] rounded-[var(--app-r-3)]" />
+          <Skeleton className="mt-3 h-4 w-4/5" />
+          <Skeleton className="mt-2 h-3.5 w-2/5" />
         </div>
       ))}
     </div>

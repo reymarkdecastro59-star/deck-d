@@ -1,23 +1,21 @@
 import { cn } from './cn'
 
 /**
- * Inline, typographic stats block that replaces "4 identical KPI tiles"
- * dashboards. Each item is a big monospaced value with a small uppercase
- * label beneath. Separated by thin hairlines on md+, stacked with visible
- * whitespace on phone. No cards, no icons, no colored backgrounds — the
- * numbers themselves are the composition.
+ * Readout panel (UX v2 §5.6): up to four big tabular numbers in ONE panel —
+ * not a row of identical KPI boxes. Each item: a 13px label above a mono
+ * readout. `value` null/'' renders an em dash so the layout stays stable.
  *
- * Items: [{ label, value, unit? }]. `value` may be null/undefined; that
- * renders as an em-dash so empty states still lay out at a stable height.
+ * Items: [{ label, value, unit?, hint? }]
  */
 export function StatsStrip({ items, className }) {
   return (
     <dl
       className={cn(
-        'grid grid-cols-2 gap-x-4 gap-y-6',
+        'grid grid-cols-2 gap-x-6 gap-y-6 rounded-[var(--app-r-3)] border border-[var(--app-hairline)] bg-[var(--app-bg-2)] p-5 sm:p-6',
         'md:flex md:items-stretch md:gap-0',
         className
       )}
+      style={{ boxShadow: 'var(--app-panel-shadow)' }}
     >
       {items.map((it, i) => {
         const has = it.value != null && it.value !== ''
@@ -25,29 +23,28 @@ export function StatsStrip({ items, className }) {
           <div
             key={it.label}
             className={cn(
-              'min-w-0',
+              'flex min-w-0 flex-col gap-2',
               'md:flex-1 md:px-6',
               i > 0 && 'md:border-l md:border-[var(--app-hairline)]',
               i === 0 && 'md:pl-0'
             )}
           >
-            <dt className="app-eyebrow order-2 mt-2 block text-[10px] text-[var(--app-fg-muted)]">
-              {it.label}
-            </dt>
+            <dt className="app-wt-small text-[13px] text-[var(--app-fg-muted)]">{it.label}</dt>
             <dd
               className={cn(
-                'app-num order-1 leading-none tracking-tight',
+                'app-num leading-none tracking-tight',
                 has ? 'text-[var(--app-fg-strong)]' : 'text-[var(--app-fg-dim)]'
               )}
-              style={{ fontSize: 'clamp(24px, 2.6vw, 32px)' }}
+              style={{ fontSize: 'clamp(26px, 2.6vw, 34px)' }}
             >
               {has ? it.value : '—'}
               {has && it.unit && (
-                <span className="ml-1 text-[13px] font-normal text-[var(--app-fg-muted)]">
-                  {it.unit}
-                </span>
+                <span className="ml-1 text-[15px] text-[var(--app-fg-muted)]">{it.unit}</span>
               )}
             </dd>
+            {it.hint && (
+              <dd className="app-wt-small text-[13px] text-[var(--app-fg-muted)]">{it.hint}</dd>
+            )}
           </div>
         )
       })}

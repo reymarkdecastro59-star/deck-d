@@ -29,6 +29,9 @@ function hoursOfDay(ms, dayStartMs) {
 export function weekSummary(sessions, now = new Date()) {
   const weekStart = startOfWeek(now).getTime()
   const lastWeekStart = weekStart - 7 * DAY_MS
+  // The same moment one week ago: comparisons stop here so a Monday morning
+  // isn't measured against a whole finished week ("100% less" on day one).
+  const sameTimeLastWeek = new Date(now).getTime() - 7 * DAY_MS
   const todayIndex = Math.floor((startOfDay(now) - weekStart) / DAY_MS)
 
   const days = DAY_LABELS.map((label, i) => ({
@@ -42,6 +45,7 @@ export function weekSummary(sessions, now = new Date()) {
   }))
 
   let lastWeekHours = 0
+  let lastWeekToDate = 0
   const games = new Set()
   let sessionCount = 0
 
@@ -64,6 +68,7 @@ export function weekSummary(sessions, now = new Date()) {
       sessionCount += 1
     } else if (startMs >= lastWeekStart && startMs < weekStart) {
       lastWeekHours += hours
+      if (startMs <= sameTimeLastWeek) lastWeekToDate += hours
     }
   }
 
@@ -77,27 +82,75 @@ export function weekSummary(sessions, now = new Date()) {
     gameCount: games.size,
     sessionCount,
     lastWeekTotal: lastWeekHours,
-    // null when there is nothing to compare against — never "+∞%".
+    lastWeekToDate,
+    // Compared with last week *up to the same moment*. null when there is
+    // nothing to compare against — never "+∞%".
     deltaPct:
-      lastWeekHours > 0 ? Math.round(((total - lastWeekHours) / lastWeekHours) * 100) : null,
+      lastWeekToDate > 0 ? Math.round(((total - lastWeekToDate) / lastWeekToDate) * 100) : null,
   }
 }
 
-/** Per-game hours for this week and last week: Map(game_name → {thisWeek, lastWeek}). */
+/**
+ * Per-game hours: Map(game_name → {thisWeek, lastWeek, lastWeekToDate}).
+ * `lastWeekToDate` stops at the same moment last week — use it for trends.
+ */
 export function weeklyByGame(sessions, now = new Date()) {
   const weekStart = startOfWeek(now).getTime()
   const lastWeekStart = weekStart - 7 * DAY_MS
+  const sameTimeLastWeek = new Date(now).getTime() - 7 * DAY_MS
   const out = new Map()
   for (const s of sessions || []) {
     if (!s?.started_at || !s.game_name) continue
     const startMs = s.started_at * 1000
     const hours = Math.max(0, (s.duration_sec ?? 0) / 3600)
-    const row = out.get(s.game_name) ?? { thisWeek: 0, lastWeek: 0 }
+    const row = out.get(s.game_name) ?? { thisWeek: 0, lastWeek: 0, lastWeekToDate: 0 }
     if (startMs >= weekStart) row.thisWeek += hours
-    else if (startMs >= lastWeekStart) row.lastWeek += hours
+    else if (startMs >= lastWeekStart) {
+      row.lastWeek += hours
+      if (startMs <= sameTimeLastWeek) row.lastWeekToDate += hours
+    }
     out.set(s.game_name, row)
   }
   return out
+}
+
+/**
+ * The last 7 days ending today (rolling), in the same shape as
+ * weekSummary().days so WeekTimeline can draw it. Unlike the calendar week
+ * it is never empty on a Monday morning.
+ */
+export function lastSevenDays(sessions, now = new Date()) {
+  const today = startOfDay(now)
+  const first = today - 6 * DAY_MS
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(first + i * DAY_MS)
+    return {
+      label: i === 6 ? 'Today' : DAY_LABELS[(date.getDay() + 6) % 7],
+      index: i,
+      date,
+      isToday: i === 6,
+      isFuture: false,
+      hours: 0,
+      spans: [],
+    }
+  })
+  for (const s of sessions || []) {
+    if (!s?.started_at) continue
+    const startMs = s.started_at * 1000
+    if (startMs < first || startMs >= today + DAY_MS) continue
+    const i = Math.floor((startOfDay(startMs) - first) / DAY_MS)
+    if (i < 0 || i > 6) continue
+    const hours = Math.max(0, (s.duration_sec ?? 0) / 3600)
+    const endMs = s.ended_at ? s.ended_at * 1000 : startMs + hours * 3_600_000
+    days[i].hours += hours
+    days[i].spans.push({
+      start: hoursOfDay(startMs, days[i].date.getTime()),
+      end: hoursOfDay(endMs, days[i].date.getTime()),
+      game: s.game_name || 'Unknown game',
+      sessionId: s.session_id,
+    })
+  }
+  return days
 }
 
 /** 'up' | 'down' | 'flat' — a 10% dead band keeps small wobbles "flat". */

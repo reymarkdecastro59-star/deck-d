@@ -24,7 +24,7 @@ export function Chip({
     return (
       <Comp
         className={cn(
-          'inline-flex items-center gap-1 rounded-[var(--app-r-2)] px-2.5 py-1 text-[11.5px] font-medium tracking-wide',
+          'inline-flex h-7 items-center gap-1 rounded-[var(--app-r-pill)] px-3 text-[13px] font-medium',
           'border',
           className
         )}
@@ -41,7 +41,7 @@ export function Chip({
   }
 
   const base =
-    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--app-r-2)] text-[12px] font-medium tracking-wide border transition-colors [transition-duration:var(--app-dur-1)]'
+    'inline-flex h-8 items-center gap-1.5 px-3.5 rounded-[var(--app-r-pill)] text-[14px] font-medium border transition-colors [transition-duration:var(--app-dur-1)]'
 
   const styles = {
     neutral: selected

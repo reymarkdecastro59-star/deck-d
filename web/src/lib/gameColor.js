@@ -12,6 +12,7 @@ export function hueOf(name) {
 export function gameColor(game) {
   const dominant = game?.dominant_color
   if (typeof dominant === 'string' && /^#[0-9a-f]{6}$/i.test(dominant)) return dominant
-  const name = typeof game === 'string' ? game : game?.game || game?.game_name
+  // Library rows use `game`, sessions `game_name`, recommendations `name`.
+  const name = typeof game === 'string' ? game : game?.game || game?.game_name || game?.name
   return `hsl(${hueOf(name)} 34% 38%)`
 }

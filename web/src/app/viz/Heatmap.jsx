@@ -1,5 +1,4 @@
 import { memo } from 'react'
-import { color } from '@/app/design/tokens'
 import { cn } from '@/app/ui/cn'
 
 /**
@@ -17,12 +16,11 @@ function HeatmapImpl({ matrix, rowLabels, ariaLabel = 'Activity by day and hour'
   return (
     <div className={cn('w-full', className)} role="img" aria-label={ariaLabel}>
       <div className="flex items-stretch gap-1">
-        <div className="flex w-6 shrink-0 flex-col justify-between py-[1px] text-right">
+        <div className="flex w-9 shrink-0 flex-col gap-[3px] text-right">
           {rowLabels.map((lbl, r) => (
             <div
               key={r}
-              className="text-[10px] leading-none text-[var(--app-fg-dim)]"
-              style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}
+              className="app-num flex flex-1 items-center justify-end text-[12px] leading-none text-[var(--app-fg-dim)]"
             >
               {lbl}
             </div>
@@ -33,14 +31,18 @@ function HeatmapImpl({ matrix, rowLabels, ariaLabel = 'Activity by day and hour'
             <div key={r} className="flex flex-1 gap-[3px]">
               {row.map((v, h) => {
                 const intensity = max > 0 ? v / max : 0
+                // Brand §2.5: one series, Signal. Intensity mixes Signal into
+                // the empty-cell surface, so it works in both themes.
                 const bg =
-                  intensity === 0 ? color.bg3 : `rgba(76, 125, 255, ${0.15 + intensity * 0.75})`
+                  intensity === 0
+                    ? 'var(--app-bg-3)'
+                    : `color-mix(in srgb, var(--app-accent) ${Math.round(20 + intensity * 80)}%, var(--app-bg-3))`
                 return (
                   <div
                     key={h}
-                    className="aspect-square flex-1 rounded-[3px]"
+                    className="min-h-[16px] flex-1 rounded-[3px]"
                     style={{ background: bg }}
-                    title={`${rowLabels[r]} ${h}:00 — ${v.toFixed(1)}h`}
+                    title={`${rowLabels[r]} ${String(h).padStart(2, '0')}:00 — ${v.toFixed(1)} h`}
                   />
                 )
               })}
@@ -48,14 +50,10 @@ function HeatmapImpl({ matrix, rowLabels, ariaLabel = 'Activity by day and hour'
           ))}
         </div>
       </div>
-      <div className="mt-2 flex gap-1 pl-7 text-[10px] text-[var(--app-fg-dim)]">
+      <div aria-hidden className="mt-2 flex gap-[3px] pl-10 text-[12px] text-[var(--app-fg-dim)]">
         {Array.from({ length: 24 }, (_, i) => (
-          <div
-            key={i}
-            className="flex-1 text-center"
-            style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}
-          >
-            {i % 3 === 0 ? i : ''}
+          <div key={i} className="app-num flex-1 text-center">
+            {i % 6 === 0 ? `${String(i).padStart(2, '0')}:00` : ''}
           </div>
         ))}
       </div>

@@ -61,7 +61,7 @@ function DeviceRowImpl({ device, onRename, onRevoke, onError, readOnly = false }
   }
 
   return (
-    <tr className="hover:bg-[var(--app-bg-2)]/50 border-t border-[var(--app-hairline)] transition-colors [transition-duration:var(--app-dur-1)]">
+    <tr className="border-t border-[var(--app-hairline)] transition-colors [transition-duration:var(--app-dur-1)]">
       <td className="min-w-0 px-4 py-3">
         {editing ? (
           <div className="max-w-[280px]">
@@ -78,16 +78,21 @@ function DeviceRowImpl({ device, onRename, onRevoke, onError, readOnly = false }
             />
           </div>
         ) : (
-          <div className="truncate text-[13.5px] text-[var(--app-fg)]">{device.device_name}</div>
+          <div className="truncate text-[15px] font-semibold text-[var(--app-fg-strong)]">
+            {device.device_name}
+          </div>
         )}
-        <div className="app-num mt-0.5 truncate text-[11px] text-[var(--app-fg-dim)]">
-          {device.device_id}
-        </div>
+        {/* The ID only helps tell apart devices with the same name. */}
+        {device.device_id !== device.device_name && (
+          <div className="app-num mt-0.5 truncate text-[13px] text-[var(--app-fg-dim)]">
+            {device.device_id}
+          </div>
+        )}
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--app-fg-muted)]">
+      <td className="app-wt-small whitespace-nowrap px-4 py-3 text-[14px] text-[var(--app-fg-muted)]">
         <span title={formatDate(device.first_seen)}>{relativeTime(device.first_seen)}</span>
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--app-fg-muted)]">
+      <td className="app-wt-small whitespace-nowrap px-4 py-3 text-[14px] text-[var(--app-fg-muted)]">
         {readOnly ? (
           <span title={formatDate(device.revoked_at)}>{relativeTime(device.revoked_at)}</span>
         ) : (

@@ -3,43 +3,42 @@ import { ArrowRight } from 'lucide-react'
 import { cn } from './cn'
 
 /**
- * Section heading used across the authenticated app. Deliberately quiet
- * because the sections it labels don't need a Card wrapper to feel like
- * groups — the eyebrow + heading + hairline rhythm carries structure.
- *
- * Props:
- *   eyebrow?    — small uppercase caption above the heading
- *   title       — section title
- *   viewAllTo?  — if set, renders a tertiary "See all" link on the right
- *   aside?      — arbitrary node in the right slot (takes precedence over viewAllTo)
+ * Section heading for the signed-in app — the same tier as Overview's
+ * PanelHead (Title 20–22 / 600) so every page has the same three levels:
+ * page title → section title → body. No per-section mono eyebrow (UX v2 R7);
+ * a one-line `description` says what the section answers instead.
  */
 export function SectionHead({
-  eyebrow,
   title,
+  description,
+  id,
   viewAllTo,
   viewAllLabel = 'See all',
   aside,
   className,
 }) {
   return (
-    <div className={cn('flex items-end justify-between gap-4', className)}>
+    <div className={cn('mb-5 flex items-end justify-between gap-4', className)}>
       <div className="min-w-0">
-        {eyebrow && (
-          <div className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">{eyebrow}</div>
-        )}
-        <h2 className="mt-1 text-[15px] font-medium tracking-tight text-[var(--app-fg-strong)]">
+        <h2
+          id={id}
+          className="text-[20px] font-semibold leading-tight tracking-[-0.015em] text-[var(--app-fg-strong)] sm:text-[22px]"
+        >
           {title}
         </h2>
+        {description && (
+          <p className="app-wt-small mt-1 text-[14px] text-[var(--app-fg-muted)]">{description}</p>
+        )}
       </div>
       {aside ? (
         <div className="shrink-0">{aside}</div>
       ) : viewAllTo ? (
         <Link
           to={viewAllTo}
-          className="inline-flex shrink-0 items-center gap-1 text-[12.5px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:text-[var(--app-fg)]"
+          className="app-wt-small inline-flex shrink-0 items-center gap-1.5 rounded-[var(--app-r-1)] text-[14px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:text-[var(--app-fg)]"
         >
           {viewAllLabel}
-          <ArrowRight className="h-3 w-3" strokeWidth={2} />
+          <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
         </Link>
       ) : null}
     </div>

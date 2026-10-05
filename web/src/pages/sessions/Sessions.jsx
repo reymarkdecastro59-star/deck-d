@@ -5,6 +5,11 @@ import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { IconButton } from '@/app/ui/IconButton'
 import { Input } from '@/app/ui/Input'
+import { PageFrame, PageHeader } from '@/app/ui/PageHeader'
+import { Panel, PanelHead } from '@/app/ui/Panel'
+import { WeekTimeline } from '@/app/viz'
+import { formatDuration } from '@/lib/format'
+import { lastSevenDays } from '@/lib/week'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useToast } from '@/app/hooks/useToast'
@@ -23,12 +28,10 @@ const EMPTY_ROWS = []
 const MS_PER_DAY = 86_400_000
 
 /**
- * Sessions view — chronological history. When sorted newest-first, the
- * list groups by date (Today / Yesterday / weekday / older). Any other
- * sort collapses to a single flat list because grouping by date on
- * length-sorted data isn't useful. Filters and search live in a compact
- * toolbar above the list; active constraints show as chips underneath so
- * the user always sees why the visible set is smaller than the total.
+ * Sessions (UX v2 §5.5): title → the last 7 days as a picture → the history.
+ * Newest-first groups by day, each day a panel (common region) with a total;
+ * other sorts are one flat list. Active filters show as chips so the user
+ * always sees why the visible set is smaller than the total.
  */
 export default function Sessions() {
   const { sessions, loading, error, reload, patchLabel, deleteSession } = useSessions()
@@ -61,6 +64,7 @@ export default function Sessions() {
   }, [rows, query, labelFilter, sort])
 
   const grouped = useMemo(() => (sort === 'newest' ? groupByDay(filtered) : null), [filtered, sort])
+  const recentDays = useMemo(() => lastSevenDays(rows), [rows])
 
   const hasQuery = query.trim().length > 0
   const hasLabelFilter = labelFilter !== 'all'
@@ -68,10 +72,7 @@ export default function Sessions() {
   const hasSessions = sessions.length > 0
 
   return (
-    <div
-      className="mx-auto w-full px-6 py-8 lg:px-10"
-      style={{ maxWidth: 'var(--app-content-max)' }}
-    >
+    <PageFrame>
       <Toolbar
         count={sessions.length}
         loading={loading}
@@ -84,7 +85,22 @@ export default function Sessions() {
       />
 
       {hasSessions && !loading && !error && (
-        <div className="mt-5 flex flex-wrap items-center gap-2">
+        <Panel aria-labelledby="ss-week" className="mb-8">
+          <PanelHead
+            id="ss-week"
+            title="Last 7 days"
+            description="Each block is a session, in the game's colour"
+          />
+          <WeekTimeline days={recentDays} />
+        </Panel>
+      )}
+
+      {hasSessions && !loading && !error && (
+        <div
+          role="group"
+          aria-label="Filter by label"
+          className="flex flex-wrap items-center gap-2"
+        >
           {FILTERS.map((f) => (
             <Chip
               key={f.value}
@@ -100,10 +116,12 @@ export default function Sessions() {
       )}
 
       {hasFilters && !loading && !error && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">Showing</span>
-          <span className="app-num text-[11.5px] text-[var(--app-fg-dim)]">
-            {filtered.length.toLocaleString()} of {sessions.length.toLocaleString()}
+        <div className="mt-4 flex flex-wrap items-center gap-2.5 text-[14px]">
+          <span className="app-wt-small text-[var(--app-fg-muted)]">
+            Showing{' '}
+            <span className="app-num text-[var(--app-fg)]">
+              {filtered.length.toLocaleString()} of {sessions.length.toLocaleString()}
+            </span>
           </span>
           {hasQuery && <AppliedChip label={`“${query}”`} onClear={() => setQuery('')} />}
           {hasLabelFilter && (
@@ -143,13 +161,14 @@ export default function Sessions() {
           !error &&
           filtered.length > 0 &&
           (grouped ? (
-            <div className="space-y-8">
+            <div className="space-y-6">
               {grouped.map((g) => (
                 <SessionGroup
                   key={g.key}
                   header={g.header}
                   aside={g.aside}
                   sessions={g.rows}
+                  timeOnly
                   onPatch={patchLabel}
                   onDelete={deleteSession}
                   onError={showToast}
@@ -170,12 +189,12 @@ export default function Sessions() {
       {toast && (
         <div
           role="alert"
-          className="fixed bottom-6 right-6 z-50 max-w-[380px] rounded-[var(--app-r-3)] border border-[var(--app-danger)] bg-[var(--app-danger-tint)] px-4 py-3 text-[13px] text-[var(--app-fg)]"
+          className="fixed bottom-6 right-6 z-50 max-w-[380px] rounded-[var(--app-r-3)] border border-[var(--app-danger)] bg-[var(--app-danger-tint)] px-4 py-3 text-[14px] text-[var(--app-fg)]"
         >
           {toast}
         </div>
       )}
-    </div>
+    </PageFrame>
   )
 }
 
@@ -190,47 +209,53 @@ function Toolbar({
   showControls,
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <div className="flex items-baseline gap-3">
-        <h1
-          className="font-normal tracking-tight text-[var(--app-fg-strong)]"
-          style={{ fontSize: 'clamp(20px, 1.8vw, 26px)' }}
-        >
-          Sessions
-        </h1>
-        <span className="app-num text-[13px] text-[var(--app-fg-dim)]">
-          {loading ? '' : count.toLocaleString()}
-        </span>
-      </div>
-      {showControls && (
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-          <div className="min-w-[220px] max-w-[360px] flex-1">
-            <Input
-              size="sm"
-              leadingIcon={<Search />}
-              placeholder="Search titles…"
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-            />
-          </div>
-          <SegmentedControl items={SORTS} value={sort} onChange={onSortChange} size="sm" />
-          <IconButton size="sm" label="Reload sessions" onClick={onReload}>
+    <PageHeader
+      title="Sessions"
+      count={loading ? null : count}
+      countLabel={count === 1 ? 'session' : 'sessions'}
+      lede={loading ? null : 'Every game the tracker recorded, newest first.'}
+      actions={
+        showControls && (
+          <IconButton label="Reload sessions" onClick={onReload}>
             <RefreshCw />
           </IconButton>
-        </div>
-      )}
-    </div>
+        )
+      }
+      toolbar={
+        showControls && (
+          <>
+            <div className="min-w-[220px] max-w-[400px] flex-1">
+              <Input
+                leadingIcon={<Search />}
+                placeholder="Search by game"
+                aria-label="Search sessions by game"
+                value={query}
+                onChange={(e) => onQueryChange(e.target.value)}
+              />
+            </div>
+            <span className="ml-auto inline-flex items-center gap-2.5">
+              <span className="app-wt-small text-[14px] text-[var(--app-fg-muted)]">Sort</span>
+              <SegmentedControl items={SORTS} value={sort} onChange={onSortChange} />
+            </span>
+          </>
+        )
+      }
+    />
   )
 }
 
-function SessionGroup({ header, aside, sessions, onPatch, onDelete, onError }) {
+function SessionGroup({ header, aside, sessions, onPatch, onDelete, onError, timeOnly }) {
   return (
-    <section>
-      <div className="flex items-baseline justify-between border-b border-[var(--app-hairline)] pb-2">
-        <h2 className="app-eyebrow text-[10.5px] text-[var(--app-fg-muted)]">{header}</h2>
-        {aside && <span className="app-num text-[11px] text-[var(--app-fg-dim)]">{aside}</span>}
+    <Panel as="section" aria-label={header} className="py-2 sm:py-3">
+      <div className="flex items-baseline justify-between gap-4 border-b border-[var(--app-hairline)] pb-3 pt-2">
+        <h2 className="text-[17px] font-semibold text-[var(--app-fg-strong)]">{header}</h2>
+        {aside && (
+          <span className="app-wt-small app-num text-[14px] text-[var(--app-fg-muted)]">
+            {aside}
+          </span>
+        )}
       </div>
-      <ul className="mt-1">
+      <ul>
         {sessions.map((s) => (
           <SessionItem
             key={s.session_id}
@@ -238,10 +263,11 @@ function SessionGroup({ header, aside, sessions, onPatch, onDelete, onError }) {
             onPatch={onPatch}
             onDelete={onDelete}
             onError={onError}
+            timeOnly={timeOnly}
           />
         ))}
       </ul>
-    </section>
+    </Panel>
   )
 }
 
@@ -250,10 +276,11 @@ function AppliedChip({ label, onClear }) {
     <button
       type="button"
       onClick={onClear}
-      className="inline-flex items-center gap-1.5 rounded-[var(--app-r-pill)] border border-[var(--app-border)] bg-[var(--app-bg-2)] py-1 pl-2.5 pr-1.5 text-[12px] text-[var(--app-fg)] transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)]"
+      aria-label={`Clear filter ${label}`}
+      className="inline-flex h-8 items-center gap-1.5 rounded-[var(--app-r-pill)] border border-[var(--app-border)] bg-[var(--app-bg-2)] pl-3 pr-2 text-[14px] text-[var(--app-fg)] transition-colors [transition-duration:var(--app-dur-1)] hover:border-[var(--app-border-strong)]"
     >
       <span className="max-w-[200px] truncate">{label}</span>
-      <X className="h-3 w-3 text-[var(--app-fg-muted)]" strokeWidth={2} />
+      <X className="h-3.5 w-3.5 text-[var(--app-fg-muted)]" strokeWidth={2} />
     </button>
   )
 }
@@ -291,7 +318,8 @@ function groupByDay(sessions) {
         day: 'numeric',
         year: 'numeric',
       })
-    const aside = `${g.rows.length} · ${g.hours >= 1 ? `${g.hours.toFixed(1)}h` : `${Math.round(g.hours * 60)}m`}`
+    const n = g.rows.length
+    const aside = `${n} ${n === 1 ? 'session' : 'sessions'} · ${formatDuration(Math.round(g.hours * 3600))}`
     return { ...g, header, aside }
   })
 }
@@ -305,14 +333,14 @@ function startOfDay(d) {
 function SessionsSkeleton() {
   return (
     <div className="space-y-3">
-      {Array.from({ length: 10 }).map((_, i) => (
+      {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="flex items-center gap-3.5 py-2">
-          <Skeleton className="h-1.5 w-1.5 rounded-full" />
-          <div className="flex-1 space-y-1.5">
-            <Skeleton className="h-3.5 w-1/2" />
-            <Skeleton className="h-2.5 w-1/3" />
+          <Skeleton className="h-[43px] w-8 rounded-[3px]" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-3.5 w-1/3" />
           </div>
-          <Skeleton className="h-3.5 w-14" />
+          <Skeleton className="h-4 w-14" />
         </div>
       ))}
     </div>

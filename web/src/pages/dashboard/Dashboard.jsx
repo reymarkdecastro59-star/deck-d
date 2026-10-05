@@ -7,7 +7,7 @@ import { useElapsed } from '@/app/shell/useElapsed'
 import { gameColor } from '@/lib/gameColor'
 import { gameState, lastPlayedByGame } from '@/lib/gameState'
 import { pickInsight } from '@/lib/insights'
-import { trendOf, weekSummary, weeklyByGame } from '@/lib/week'
+import { lastSevenDays, trendOf, weekSummary, weeklyByGame } from '@/lib/week'
 import { useDashboard, useNextUp } from './useDashboard'
 import {
   ContinueShelf,
@@ -67,7 +67,8 @@ export default function Dashboard() {
     )
   }
 
-  const { week, heroGame, continueItems, momentumRows, gamesByName, lastPlayed, perGame } = model
+  const { week, recentDays, heroGame, heroState, continueItems, momentumRows, gamesByName } = model
+  const { lastPlayed, perGame } = model
 
   return (
     <Page ambient={live ? (gamesByName.get(live.game_name) ?? live.game_name) : heroGame}>
@@ -80,6 +81,7 @@ export default function Dashboard() {
           game={live ? gamesByName.get(live.game_name) : heroGame}
           weekHours={heroGame ? (perGame.get(heroGame.game)?.thisWeek ?? 0) : 0}
           lastPlayed={heroGame ? lastPlayed.get(heroGame.game) : null}
+          state={heroState}
         />
         <WeekPanel week={week} />
       </div>
@@ -87,7 +89,7 @@ export default function Dashboard() {
       <ContinueShelf items={continueItems} />
 
       <div className="flex flex-wrap gap-6 pt-12">
-        <SessionsPanel week={week} gamesByName={gamesByName} live={live} latest={recent[0]} />
+        <SessionsPanel days={recentDays} gamesByName={gamesByName} live={live} latest={recent[0]} />
         <MomentumPanel rows={momentumRows} />
       </div>
 
@@ -128,7 +130,8 @@ function buildModel(summary, recent, live) {
   const stateOf = (g) => gameState(lastPlayed.get(g.game), now)
   const trendFor = (g) => {
     const w = perGame.get(g.game)
-    return w ? trendOf(w.thisWeek, w.lastWeek) : 'flat'
+    // Same-moment comparison: a fresh week isn't "down" against a finished one.
+    return w ? trendOf(w.thisWeek, w.lastWeekToDate) : 'flat'
   }
 
   // Hero = most played this week; falls back to top momentum when the week is empty.
@@ -156,7 +159,9 @@ function buildModel(summary, recent, live) {
 
   return {
     week,
+    recentDays: lastSevenDays(recent),
     heroGame,
+    heroState: heroGame ? stateOf(heroGame) : 'active',
     continueItems,
     momentumRows,
     gamesByName,

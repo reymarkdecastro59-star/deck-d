@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { startOfWeek, weekSummary, weeklyByGame, trendOf } from './week.js'
+import { startOfWeek, weekSummary, weeklyByGame, trendOf, lastSevenDays } from './week.js'
 import { gameState, lastPlayedByGame } from './gameState.js'
 import { pickInsight } from './insights.js'
 import { gameColor, hueOf } from './gameColor.js'
@@ -50,6 +50,42 @@ test('weekSummary returns null delta when last week is empty', () => {
   assert.equal(w.deltaPct, null)
 })
 
+test('Monday morning compares with last week up to the same moment', () => {
+  const monMorning = new Date(2026, 9, 5, 9, 0) // Mon 5 Oct, 09:00
+  const sessions = [
+    session(at(2026, 9, 4, 14), 300, 'Balatro'), // last week, Sunday
+    session(at(2026, 8, 28, 8), 60, 'Hades II'), // last week, Monday 08:00 (before 09:00)
+  ]
+  const w = weekSummary(sessions, monMorning)
+  assert.equal(w.total, 0)
+  assert.equal(w.lastWeekTotal, 6)
+  assert.equal(w.lastWeekToDate, 1)
+  assert.equal(w.deltaPct, -100) // fair: 0 h vs 1 h by this time last week
+
+  const m = weeklyByGame(sessions, monMorning)
+  // Balatro was played later last week, so it is not "down" yet.
+  assert.equal(trendOf(m.get('Balatro').thisWeek, m.get('Balatro').lastWeekToDate), 'flat')
+})
+
+test('weekSummary has no comparison when last week had nothing by now', () => {
+  const monMorning = new Date(2026, 9, 5, 9, 0)
+  const w = weekSummary([session(at(2026, 9, 4, 14), 300, 'Balatro')], monMorning)
+  assert.equal(w.deltaPct, null)
+})
+
+test('lastSevenDays is a rolling window ending today', () => {
+  const monMorning = new Date(2026, 9, 5, 9, 0)
+  const days = lastSevenDays(
+    [session(at(2026, 9, 4, 14), 60, 'Balatro'), session(at(2026, 8, 27, 14), 60, 'Old')],
+    monMorning
+  )
+  assert.equal(days.length, 7)
+  assert.equal(days[6].label, 'Today')
+  assert.equal(days[0].label, 'Tue') // Tue 29 Sep
+  assert.equal(days[5].spans[0].game, 'Balatro') // Sunday
+  assert.equal(days.flatMap((d) => d.spans).length, 1) // the 27 Sep session is outside
+})
+
 test('a session past midnight is clipped at 24:00 on its start day', () => {
   const w = weekSummary([session(at(2026, 9, 2, 23), 120, 'Hades II')], NOW)
   const span = w.days[4].spans[0]
@@ -63,7 +99,7 @@ test('weeklyByGame and trendOf', () => {
     [session(at(2026, 9, 3, 20), 120, 'Hades II'), session(at(2026, 8, 25, 20), 60, 'Hades II')],
     NOW
   )
-  assert.deepEqual(m.get('Hades II'), { thisWeek: 2, lastWeek: 1 })
+  assert.deepEqual(m.get('Hades II'), { thisWeek: 2, lastWeek: 1, lastWeekToDate: 1 })
   assert.equal(trendOf(2, 1), 'up')
   assert.equal(trendOf(1, 2), 'down')
   assert.equal(trendOf(1.02, 1), 'flat')
@@ -102,4 +138,10 @@ test('gameColor prefers a valid dominant colour, else a stable hue', () => {
   assert.equal(gameColor({ dominant_color: '#112233' }), '#112233')
   assert.equal(gameColor({ dominant_color: 'red;}' , game: 'X' }), `hsl(${hueOf('X')} 34% 38%)`)
   assert.equal(gameColor('Hades II'), gameColor({ game: 'Hades II' }))
+})
+
+test('gameColor reads every naming convention', () => {
+  const a = gameColor({ name: 'Blue Prince' })
+  assert.equal(a, gameColor('Blue Prince'))
+  assert.notEqual(a, gameColor({ name: 'Megabonk' }))
 })

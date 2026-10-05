@@ -48,14 +48,18 @@ function ArtButton({ to, children, solid }) {
   )
 }
 
-/* ─── Hero: now playing, or your most-played game this week ─────────── */
+/* ─── Hero: now playing, the week's most-played game, or top momentum ─ */
 
-export function HeroCard({ live, liveElapsed, game, weekHours, lastPlayed }) {
+export function HeroCard({ live, liveElapsed, game, weekHours, lastPlayed, state = 'active' }) {
   const name = live?.game_name ?? game?.game ?? 'Unknown game'
   const to = game ? `/library/${gameKey(game)}` : '/sessions'
+  // The copy must match the reason the game is here: it only "leads the
+  // week" when it has hours this week; otherwise it's the top-momentum game.
+  const leadsWeek = weekHours > 0
+  const why = leadsWeek ? 'Your most-played game this week' : 'Your top game by momentum'
   return (
     <article
-      aria-label={live ? `Now playing: ${name}` : `Most played this week: ${name}`}
+      aria-label={live ? `Now playing: ${name}` : `${why}: ${name}`}
       className="app-tile min-w-0 flex-[2_1_560px]"
     >
       <Art
@@ -80,8 +84,13 @@ export function HeroCard({ live, liveElapsed, game, weekHours, lastPlayed }) {
               </ArtChip>
             ) : (
               <ArtChip>
-                <StateShape state="active" color={SIG_ON_ART} />
-                Active · last played {relativeTime(lastPlayed)}
+                <StateShape
+                  state={state}
+                  color={
+                    state === 'active' ? SIG_ON_ART : state === 'drifting' ? '#F4B860' : '#A9B2BB'
+                  }
+                />
+                {STATE_LABEL[state]} · last played {relativeTime(lastPlayed)}
               </ArtChip>
             )}
           </div>
@@ -92,13 +101,11 @@ export function HeroCard({ live, liveElapsed, game, weekHours, lastPlayed }) {
             <span className="text-[16px] font-medium sm:text-[17px]">
               {live
                 ? 'Session in progress · saved when you close the game'
-                : `${formatHours(weekHours)} h this week · ${formatHours(game?.total_hours)} h total`}
+                : leadsWeek
+                  ? `${formatHours(weekHours)} h this week · ${formatHours(game?.total_hours)} h total`
+                  : `${formatHours(game?.total_hours)} h total`}
             </span>
-            {!live && (
-              <span className="text-[14px] text-[#F5F7F8]/80 sm:text-[15px]">
-                Your most-played game this week
-              </span>
-            )}
+            {!live && <span className="text-[14px] text-[#F5F7F8]/80 sm:text-[15px]">{why}</span>}
           </div>
           <div className="flex flex-wrap gap-2.5 pt-1.5">
             <ArtButton to={to} solid>
@@ -137,17 +144,21 @@ export function WeekPanel({ week, compact }) {
           {week.total.toFixed(1)}
           <span className="ml-1 text-[0.45em] text-[var(--app-fg-muted)]">h</span>
         </span>
-        {delta != null && (
-          <span className="app-wt-small inline-flex items-center gap-1 text-[14px] text-[var(--app-fg)]">
-            <TrendMark trend={delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'} />
-            {Math.abs(delta)}% {delta >= 0 ? 'more' : 'less'} than last week
-          </span>
+        {delta != null ? (
+          <WeekDelta week={week} />
+        ) : (
+          week.lastWeekTotal > 0 && (
+            // Nothing to compare yet (fresh week): give last week as context, not a verdict.
+            <span className="app-wt-small text-[14px] text-[var(--app-fg-muted)]">
+              Last week: <span className="app-num">{formatHours(week.lastWeekTotal)} h</span>
+            </span>
+          )
         )}
       </div>
       <WeekMeter days={week.days} height={compact ? 72 : 96} compact={compact} />
       <div className="mt-auto flex flex-wrap justify-between gap-2 border-t border-[var(--app-hairline)] pt-3.5">
         <span className="text-[15px] font-semibold text-[var(--app-fg)]">
-          {week.playDays} of {week.elapsedDays} play days
+          {week.playDays} of 7 play days
         </span>
         <span className="app-wt-small text-[14px] text-[var(--app-fg-muted)]">
           {week.gameCount} {week.gameCount === 1 ? 'game' : 'games'} · {week.sessionCount}{' '}
@@ -155,6 +166,23 @@ export function WeekPanel({ week, compact }) {
         </span>
       </div>
     </Panel>
+  )
+}
+
+/**
+ * Neutral comparison (R21): hours, not a percentage — "100% less" on a
+ * quiet morning reads as a verdict. Compared with the same moment last week.
+ */
+function WeekDelta({ week }) {
+  const diff = week.total - week.lastWeekToDate
+  const trend = Math.abs(diff) < 0.1 ? 'flat' : diff > 0 ? 'up' : 'down'
+  return (
+    <span className="app-wt-small inline-flex items-center gap-1.5 text-[14px] text-[var(--app-fg)]">
+      <TrendMark trend={trend} />
+      {trend === 'flat'
+        ? 'Same as this time last week'
+        : `${formatHours(Math.abs(diff))} h ${diff > 0 ? 'more' : 'less'} than this time last week`}
+    </span>
   )
 }
 
@@ -193,7 +221,7 @@ function ContinueTile({ game, state, thisWeek, trend, lastPlayed }) {
       to={`/library/${gameKey(game)}`}
       className="app-tile flex flex-col gap-3 rounded-[var(--app-r-3)]"
     >
-      <Art game={game} className="app-frame aspect-[3/4] rounded-[var(--app-r-3)]">
+      <Art game={game} portrait className="app-frame aspect-[3/4] rounded-[var(--app-r-3)]">
         <ArtScrim strength={0.7} />
         <span className="absolute bottom-2.5 left-2.5">
           <ArtChip className="h-7 px-2.5">
@@ -210,7 +238,8 @@ function ContinueTile({ game, state, thisWeek, trend, lastPlayed }) {
           {name}
         </span>
         <span className="app-wt-small flex items-center gap-1.5 text-[14px] text-[var(--app-fg-muted)]">
-          <TrendMark trend={trend} />
+          {/* A trend only means something next to this week's hours, not a date. */}
+          {thisWeek > 0 && <TrendMark trend={trend} />}
           {meta}
         </span>
       </span>
@@ -218,10 +247,10 @@ function ContinueTile({ game, state, thisWeek, trend, lastPlayed }) {
   )
 }
 
-/* ─── This week's sessions (timeline + latest) ──────────────────────── */
+/* ─── Recent sessions: rolling 7-day timeline + latest ──────────────── */
 
-export function SessionsPanel({ week, gamesByName, live, latest, compact }) {
-  const games = [...new Set(week.days.flatMap((d) => d.spans.map((s) => s.game)))].slice(0, 6)
+export function SessionsPanel({ days, gamesByName, live, latest, compact }) {
+  const games = [...new Set(days.flatMap((d) => d.spans.map((s) => s.game)))].slice(0, 6)
   const liveSpan = live
     ? {
         game: live.game_name,
@@ -235,12 +264,12 @@ export function SessionsPanel({ week, gamesByName, live, latest, compact }) {
     <Panel aria-labelledby="ov-sessions" className="flex-[7_1_520px]">
       <PanelHead
         id="ov-sessions"
-        title="This week's sessions"
+        title="Last 7 days"
         action={<ViewAll to="/sessions">All sessions</ViewAll>}
       />
-      <WeekTimeline days={week.days} gamesByName={gamesByName} live={liveSpan} compact={compact} />
+      <WeekTimeline days={days} gamesByName={gamesByName} live={liveSpan} compact={compact} />
       {games.length > 0 && (
-        <ul aria-label="Games this week" className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
+        <ul aria-label="Games in the last 7 days" className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
           {games.map((g) => (
             <li
               key={g}
@@ -393,9 +422,9 @@ export function InsightPanel({ insight }) {
                 />
               )}
             </div>
-            <figcaption className="app-num flex justify-between text-[12px] text-[var(--app-fg-muted)]">
+            <figcaption className="app-num app-wt-small flex justify-between text-[13px] text-[var(--app-fg-muted)]">
               <span>{bars.length} sessions</span>
-              <span>– – {insight.threshold} min</span>
+              <span>Line: {insight.threshold} min</span>
             </figcaption>
           </figure>
         )}

@@ -20,7 +20,9 @@ export function ErrorState({
     >
       <h3 className="text-[16px] font-medium text-[var(--app-fg-strong)]">{title}</h3>
       {description && (
-        <p className="mt-2 max-w-[520px] text-[13px] text-[var(--app-fg-muted)]">{description}</p>
+        <p className="app-wt-small mt-2 max-w-[520px] text-[15px] text-[var(--app-fg-muted)]">
+          {description}
+        </p>
       )}
       {onRetry && (
         <Button variant="secondary" size="sm" className="mt-5" onClick={onRetry}>
