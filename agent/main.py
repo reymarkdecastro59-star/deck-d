@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 
 import auth
 import autostart
+import importer
 import companion
 import notifications
 import single_instance
@@ -49,6 +50,11 @@ def _sync_loop():
     # Check in immediately so the web shows this tracker as connected within
     # seconds of launch, not after the first game session.
     _heartbeat_once()
+    # First sign-in on this PC: bring in existing launcher playtime once.
+    try:
+        importer.maybe_run_first_time()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[deckd] first import raised: {exc}", file=sys.stderr)
     while True:
         time.sleep(SYNC_INTERVAL_SEC)
         try:
@@ -58,6 +64,11 @@ def _sync_loop():
             # leave the queue growing silently until the user notices.
             print(f"[deckd] sync tick raised: {exc}", file=sys.stderr)
         _heartbeat_once()
+        # The web's "Re-import" button: the request arrives on the heartbeat.
+        try:
+            importer.maybe_run_requested(sync.import_requested_at())
+        except Exception as exc:  # noqa: BLE001 — never kill the sync thread
+            print(f"[deckd] import raised: {exc}", file=sys.stderr)
         _refresh_tray()  # Phase 6: pick up any state changes (new logins, revocations cleared, etc.)
 
 

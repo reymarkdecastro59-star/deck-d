@@ -110,6 +110,16 @@
   .acct { display:flex; align-items:center; justify-content:space-between; font-size:13px; }
   .textbtn { border:0; background:none; color:var(--fg2); font-size:13px; font-weight:600; cursor:pointer; padding:4px 0; }
   .textbtn:hover { color:var(--fg); }
+  .acct-actions { display:flex; gap:14px; }
+  .back { display:inline-flex; align-items:center; gap:6px; border:0; background:none; color:var(--fg2); font-size:14px; font-weight:600; cursor:pointer; padding:6px 0; margin-bottom:6px; }
+  .back:hover { color:var(--fg); }
+  h2.vh { margin:0 0 6px; font-size:22px; font-weight:600; letter-spacing:-.02em; }
+  .imp-row { display:flex; flex-direction:column; gap:8px; }
+  select { width:100%; height:44px; padding:0 12px; border-radius:8px; border:1px solid var(--div); background:var(--s1); color:var(--fg); font:inherit; font-size:15px; }
+  select:focus { outline:none; border-color:var(--sig); box-shadow:0 0 0 3px var(--sigtint); }
+  .result { font-size:14px; line-height:1.5; }
+  .result .ok { color:var(--fg); }
+  .result .bad { color:var(--danger); }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 </style>
 </head>
@@ -177,8 +187,30 @@
         </div>
         <div class="acct">
           <span class="dim" id="acct-email"></span>
-          <button class="textbtn" id="signout">Sign out</button>
+          <span class="acct-actions">
+            <button class="textbtn" id="open-import">Import</button>
+            <button class="textbtn" id="signout">Sign out</button>
+          </span>
         </div>
+      </div>
+    </section>
+
+    <!-- ── Launcher import ─────────────────────────────────────── -->
+    <section class="view" id="view-import" aria-labelledby="imp-title">
+      <button class="back" id="imp-back">← Back</button>
+      <h2 class="vh" id="imp-title">Steam import</h2>
+      <p class="muted" style="margin:0 0 18px; font-size:14px">Brings in the playtime Steam already recorded. Re-importing replaces the last import; tracked sessions are never changed.</p>
+
+      <div class="panel imp-row">
+        <label for="imp-steam">Steam account</label>
+        <select id="imp-steam"></select>
+        <span class="dim" style="font-size:13px" id="imp-steam-note"></span>
+      </div>
+
+
+      <div class="foot">
+        <div class="result" id="imp-result" role="status" aria-live="polite"></div>
+        <button class="primary" id="imp-run"><span class="spin" aria-hidden="true"></span><span id="imp-run-label">Import now</span></button>
       </div>
     </section>
   </main>
@@ -189,6 +221,8 @@
   const api = () => (window.pywebview && window.pywebview.api) || null
   let state = null
   let tick = null
+  let view = 'dash' // remembered so the 5-second refresh doesn't leave the import view
+  let impPoll = null
 
   const fmt = (sec) => {
     sec = Math.max(0, Math.round(sec || 0))
@@ -204,9 +238,11 @@
   }
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n }
 
-  function show(view) {
+  function show(next) {
+    view = next
     $('view-signin').classList.toggle('on', view === 'signin')
     $('view-dash').classList.toggle('on', view === 'dash')
+    $('view-import').classList.toggle('on', view === 'import')
     if (view === 'signin') setTimeout(() => ($('email').value ? $('password') : $('email')).focus(), 30)
   }
 
@@ -254,7 +290,7 @@
     }
   }
 
-  function render(s, view) {
+  function render(s, requested) {
     state = s
     if (!s.signed_in) return show('signin')
     $('status-text').textContent = s.live ? `Live · tracking as ${s.email}` : `Tracking as ${s.email}`
@@ -267,7 +303,7 @@
     const sw = $('autostart'); sw.setAttribute('aria-checked', String(!!s.autostart)); sw.disabled = !s.autostart_supported
     sw.title = s.autostart_supported ? '' : 'Available in the installed app'
     $('acct-email').textContent = s.email || ''
-    show(view === 'signin' ? 'signin' : 'dash')
+    show(requested === 'signin' ? 'signin' : view === 'import' ? 'import' : 'dash')
   }
 
   async function refresh(view) {
@@ -292,6 +328,55 @@
     sw.setAttribute('aria-checked', String(await api().set_autostart(next)))
   }
   $('signout').onclick = async () => { render(await api().sign_out()) }
+
+  // ── launcher import view ───────────────────────────────────
+  const LABEL = { steam: 'Steam', none: 'Steam' }
+  function renderImport(st) {
+    const sel = $('imp-steam'); sel.replaceChildren()
+    if (!st.steam_accounts.length) {
+      sel.append(el('option', null, 'Steam not found on this PC')); sel.disabled = true
+      $('imp-steam-note').textContent = ''
+    } else {
+      sel.disabled = false
+      for (const a of st.steam_accounts) {
+        const o = el('option', null, `${a.persona} · ${a.games} games · ${a.hours} h`)
+        o.value = a.account_id; o.selected = a.account_id === st.steam_account_id; sel.append(o)
+      }
+      $('imp-steam-note').textContent = st.steam_accounts.length > 1 ? 'Several Steam accounts use this PC. Pick yours.' : ''
+    }
+    // Connected on the web: the account is verified, so it can't be changed here.
+    if (st.connected) {
+      sel.disabled = true
+      if (![...sel.options].some((o) => o.value === String(st.connected.account_id))) {
+        sel.replaceChildren(el('option', null, 'Your connected Steam account'))
+      }
+      $('imp-steam-note').textContent = st.connected.api_ok
+        ? 'Connected on the web. Imports go through your Steam connection.'
+        : 'Connected on the web. Your Steam game details are private, so this PC reads Steam instead.'
+    }
+    const btn = $('imp-run'), res = $('imp-result'); res.replaceChildren()
+    btn.disabled = !!st.running; btn.classList.toggle('busy', !!st.running)
+    $('imp-run-label').textContent = st.running ? 'Importing…' : 'Import now'
+    if (!st.running && st.last_result) {
+      for (const [src, r] of Object.entries(st.last_result)) {
+        const line = el('div', r.ok ? 'ok' : 'bad',
+          r.ok
+            ? r.count != null
+              ? `${LABEL[src] || src}: ${r.count} games imported${r.via === 'steam' ? ' through your Steam connection' : ''}`
+              : `${LABEL[src] || src}: imported through your Steam connection`
+            : `${LABEL[src] || src}: ${r.error}`)
+        res.append(line)
+      }
+      if (st.last_run_at) res.append(el('div', 'dim', `Last import ${ago(st.last_run_at)}`))
+    }
+    if (st.running && !impPoll) impPoll = setInterval(pollImport, 1500)
+    if (!st.running && impPoll) { clearInterval(impPoll); impPoll = null }
+  }
+  async function pollImport() { try { renderImport(await api().get_import_status()) } catch (e) { /* keep last */ } }
+  $('open-import').onclick = async () => { show('import'); await pollImport() }
+  $('imp-back').onclick = () => { show('dash'); refresh() }
+  $('imp-steam').onchange = async (e) => renderImport(await api().set_import_account(e.target.value))
+  $('imp-run').onclick = async () => renderImport(await api().start_import())
   $('signin-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     const btn = $('si-submit'), err = $('si-error')
