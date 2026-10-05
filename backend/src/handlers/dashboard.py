@@ -8,6 +8,7 @@ from shared.cors import CORS_HEADERS
 from shared.db import batch_get_game_metadata, get_sessions, get_sessions_in_range
 from shared.decay import HALF_LIFE_DAYS, decay_sec_from_intervals
 from shared.intervals import union_seconds
+from shared.imports import list_imported_games, merge_into_dashboard
 
 logger = Logger(service="deckd-dashboard")
 
@@ -125,6 +126,14 @@ def handler(event: dict, context) -> dict:
 
         total_sessions = len(sessions)
         total_hours = round(total_union_sec / 3600, 2)
+        tracked_hours = total_hours
+        imported_extra_hours = 0.0
+        # Launcher imports are lifetime totals with no timestamps, so they
+        # only join the all-time view. Per game the larger of tracked and
+        # imported counts (never the sum); tracked sessions are unchanged.
+        if range_meta is None:
+            games, imported_extra_hours = merge_into_dashboard(games, list_imported_games(user_id))
+            total_hours = round(total_hours + imported_extra_hours, 2)
         raw_sum_hours = round(raw_sum_sec / 3600, 2)
         overlap_stripped_hours = round((raw_sum_sec - total_union_sec) / 3600, 2)
         decay_hours = round(total_decay_sec / 3600, 2)
@@ -140,6 +149,9 @@ def handler(event: dict, context) -> dict:
         body: dict = {
             "total_sessions": total_sessions,
             "total_hours": total_hours,
+            # total_hours = tracked + launcher-imported time DECK'D didn't see.
+            "tracked_hours": tracked_hours,
+            "imported_hours": imported_extra_hours,
             "raw_sum_hours": raw_sum_hours,
             "overlap_stripped_hours": overlap_stripped_hours,
             "decay_hours": decay_hours,

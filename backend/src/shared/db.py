@@ -22,7 +22,8 @@ def get_trending_daily() -> Optional[dict]:
     return resp.get("Item")
 
 
-def put_trending_daily(games: list, updated_at: str, ttl: Optional[int] = None) -> None:
+def put_trending_daily(games: list, updated_at: str, ttl: Optional[int] = None,
+                       source: Optional[str] = None) -> None:
     """Write (or overwrite) the daily trending cache item.
 
     The item is written WITHOUT a TTL by default. It is replaced every day by
@@ -37,6 +38,8 @@ def put_trending_daily(games: list, updated_at: str, ttl: Optional[int] = None) 
         "games": games,
         "updated_at": updated_at,
     }
+    if source:
+        item["source"] = source  # "steam" (most played) or "rawg" (fallback)
     if ttl is not None:
         item["ttl"] = ttl
     get_table().put_item(Item=item)
@@ -174,13 +177,13 @@ def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
     return items
 
 
-def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[str]:
+def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> dict[str, str]:
     """
     Scan all SESSION# items with started_at >= since_epoch.
-    Returns the distinct lowercased game_exe values seen.
+    Returns {lowercased game_exe: game_name reported by the tracker}.
     Background job path — not per-request.
     """
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     count = 0
     kwargs: dict = {
         "FilterExpression": (
@@ -192,7 +195,7 @@ def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[s
         for item in resp.get("Items", []):
             exe = item.get("game_exe", "").lower()
             if exe and exe not in seen:
-                seen.add(exe)
+                seen[exe] = item.get("game_name") or ""
             count += 1
             if count >= max_items:
                 return seen

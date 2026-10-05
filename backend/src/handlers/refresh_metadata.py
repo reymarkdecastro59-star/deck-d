@@ -8,6 +8,7 @@ import requests
 
 from shared.db import iter_all_game_metadata, iter_recent_session_exes, put_game_metadata, put_trending_daily
 from shared.rawg import fetch_metadata
+from shared import steam_api
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,10 @@ def _api_key() -> str:
 
 def _fetch_rawg_trending() -> list[dict] | None:
     """
-    Query RAWG for recently-added, well-reviewed games and return a list of
-    trimmed game objects.
+    Query RAWG for games released in the last 90 days, ranked by how many
+    players added them to their libraries ("-added"). The previous query also
+    required a Metacritic score, which RAWG rarely has for new releases, so it
+    returned nothing and Trending stayed empty.
 
     Returns None on any network or non-200 error so the caller can decide
     NOT to overwrite the existing DynamoDB item.
@@ -43,7 +46,6 @@ def _fetch_rawg_trending() -> list[dict] | None:
     params = {
         "ordering": "-added",
         "dates": f"{date_from},{date_to}",
-        "metacritic": "75,100",
         "page_size": 25,
         "key": _api_key(),
     }
@@ -90,11 +92,17 @@ def _fetch_rawg_trending() -> list[dict] | None:
 
 def _refresh_trending() -> None:
     """
-    Fetch trending games from RAWG and write to DynamoDB.
-    On any RAWG failure: log loudly and return without touching DynamoDB,
+    Trending = what's popular right now, the same for everyone. Source:
+    Steam's most-played chart (needs STEAM_API_KEY); RAWG's recent releases
+    are the fallback when Steam isn't configured or fails.
+    On any failure: log loudly and return without touching DynamoDB,
     so the existing (possibly stale) item keeps serving.
     """
-    games = _fetch_rawg_trending()
+    games = steam_api.most_played() if steam_api.api_key() else None
+    source = "steam"
+    if games is None:
+        games = _fetch_rawg_trending()
+        source = "rawg"
     if games is None:
         logger.error(
             "trending_refresh_skipped reason=rawg_failure "
@@ -106,13 +114,19 @@ def _refresh_trending() -> None:
 
     # No TTL: the item is overwritten daily, and on failure the stale item must
     # keep serving (consumers show its age from `updated_at`). See B8.
-    put_trending_daily(games=games, updated_at=updated_at)
-    logger.info("trending_refresh_complete count=%d updated_at=%s", len(games), updated_at)
+    put_trending_daily(games=games, updated_at=updated_at, source=source)
+    logger.info("trending_refresh_complete source=%s count=%d updated_at=%s", source, len(games), updated_at)
 
 
 def handler(event: dict, context) -> dict:
+    # The 6-hourly schedule refreshes only Trending ("popular right now");
+    # the full metadata pass stays daily.
+    if (event or {}).get("trending_only"):
+        _refresh_trending()
+        return {"trending_only": True}
     stale_days = _env_int("REFRESH_STALE_DAYS", 7)
-    failed_retry_days = _env_int("FAILED_RETRY_DAYS", 30)
+    # Was 30: one failed lookup (e.g. a missing API key) hid art for a month.
+    failed_retry_days = _env_int("FAILED_RETRY_DAYS", 1)
     max_calls = _env_int("MAX_CALLS_PER_RUN", 200)
 
     now = int(time.time())
@@ -125,8 +139,8 @@ def handler(event: dict, context) -> dict:
     cached_map: dict[str, dict] = {item["game_exe"]: item for item in cached}
 
     # ── b) new exes from recent sessions ──────────────────────────────────
-    recent_exes = iter_recent_session_exes(session_since)
-    new_exes = recent_exes - cached_map.keys()
+    recent_exes = iter_recent_session_exes(session_since)  # {exe: game_name}
+    new_exes = recent_exes.keys() - cached_map.keys()
 
     # ── c) stale items that need refresh ──────────────────────────────────
     stale_exes: list[str] = []
@@ -150,7 +164,7 @@ def handler(event: dict, context) -> dict:
     failed_count = 0
 
     for exe in queue:
-        metadata = fetch_metadata(exe)
+        metadata = fetch_metadata(exe, recent_exes.get(exe) or cached_map.get(exe, {}).get("name"))
         put_game_metadata(metadata)
         processed += 1
         if exe in new_exes:

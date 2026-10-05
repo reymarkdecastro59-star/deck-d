@@ -143,3 +143,13 @@ def make_event(
             }
         },
     }
+
+
+@pytest.fixture(autouse=True)
+def _rawg_offline(monkeypatch):
+    """A fake RAWG key for code that requires one, and no real network from
+    the upload-time art lookup (tests of ensure_metadata patch it themselves)."""
+    monkeypatch.setenv("RAWG_API_KEY", os.environ.get("RAWG_API_KEY") or "test-key")
+    import shared.metadata_ingest as mi
+    from shared.rawg import _failed_item
+    monkeypatch.setattr(mi, "fetch_metadata", lambda exe, name=None: _failed_item(exe, 0))

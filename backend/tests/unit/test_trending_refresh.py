@@ -211,3 +211,47 @@ def test_trending_failure_does_not_abort_cron(ddb_table, monkeypatch):
     assert "new" in result
     assert "refreshed" in result
     assert "failed" in result
+
+
+# ---------------------------------------------------------------------------
+# Steam most-played chart is the primary source when a Steam key is set
+# ---------------------------------------------------------------------------
+
+def _steam_get(url, params=None, timeout=None):
+    if "GetMostPlayedGames" in url:
+        return MagicMock(ok=True, json=lambda: {"response": {"ranks": [
+            {"rank": 1, "appid": 730, "last_week_rank": 1, "peak_in_game": 1293425},
+            {"rank": 2, "appid": 431960, "last_week_rank": 3, "peak_in_game": 90000},  # a tool typed as game
+            {"rank": 3, "appid": 570, "last_week_rank": 2, "peak_in_game": 895069},
+        ]}})
+    appid = str(params["appids"])
+    data = {"730": {"type": "game", "name": "Counter-Strike 2", "genres": [{"description": "Action"}]},
+            "431960": {"type": "game", "name": "Wallpaper Engine",
+                       "genres": [{"description": "Casual"}, {"description": "Utilities"}]},
+            "570": {"type": "game", "name": "Dota 2", "genres": [{"description": "Strategy"}]}}[appid]
+    return MagicMock(ok=True, json=lambda: {appid: {"success": True, "data": data}})
+
+
+def test_trending_uses_steam_most_played(ddb_table, monkeypatch):
+    import shared.steam_api as steam_api
+    monkeypatch.setenv("STEAM_API_KEY", "k")
+    monkeypatch.setattr(steam_api.requests, "get", _steam_get)
+    refresh_module.handler({"trending_only": True}, None)
+    item = db_module.get_trending_daily()
+    assert item["source"] == "steam"
+    assert [g["name"] for g in item["games"]] == ["Counter-Strike 2", "Dota 2"]  # tool skipped
+    cs = item["games"][0]
+    assert cs["rank"] == 1 and cs["peak_players"] == 1293425
+    assert cs["background_image"].endswith("/730/capsule_616x353.jpg")
+
+
+def test_trending_falls_back_to_rawg_when_steam_fails(ddb_table, monkeypatch):
+    import shared.steam_api as steam_api
+    monkeypatch.setenv("STEAM_API_KEY", "k")
+    monkeypatch.setattr(steam_api.requests, "get", MagicMock(return_value=MagicMock(ok=False, status_code=503)))
+    mock_resp = MagicMock(ok=True)
+    mock_resp.json.return_value = _rawg_trending_payload(count=3)
+    with patch.object(refresh_module.requests, "get", return_value=mock_resp):
+        refresh_module.handler({"trending_only": True}, None)
+    item = db_module.get_trending_daily()
+    assert item["source"] == "rawg" and len(item["games"]) == 3

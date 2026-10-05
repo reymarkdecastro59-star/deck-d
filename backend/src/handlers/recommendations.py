@@ -73,6 +73,18 @@ def handler(event: dict, context) -> dict:
 
 def _get_recommendations(event: dict, context) -> dict:
     user_id = get_user_id(event)
+    # The Trending screen only needs the shared daily list: skip the genre
+    # and LLM tiers (slow, and LLM picks cost money).
+    if ((event.get("queryStringParameters") or {}).get("tier")) == "trending":
+        return {
+            "statusCode": 200,
+            "headers": {**CORS_HEADERS, "Cache-Control": _CACHE_HEADER},
+            "body": json.dumps(
+                {"trending": _trending(), "trending_updated_at": _trending_updated_at(),
+                 "trending_source": _trending_source()},
+                cls=_DecimalEncoder,  # ratings are stored as Decimal
+            ),
+        }
     hashed = hashlib.sha256(user_id.encode()).hexdigest()[:12]
 
     trending = _trending()
@@ -104,6 +116,16 @@ def _trending() -> list:
     if item is None:
         return []
     return item.get("games", []) or []
+
+
+def _trending_updated_at():
+    item = get_trending_daily()
+    return item.get("updated_at") if item else None
+
+
+def _trending_source():
+    item = get_trending_daily()
+    return item.get("source") if item else None
 
 
 # ---------------------------------------------------------------------------

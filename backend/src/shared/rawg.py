@@ -48,6 +48,11 @@ def _normalize(text: str) -> str:
     return text.lower().strip()
 
 
+def _loose(text: str) -> str:
+    """Letters and digits only: "Lurk in the Dark : Prologue" == "Lurk in the Dark: Prologue"."""
+    return "".join(ch for ch in (text or "").lower() if ch.isalnum())
+
+
 def _exe_to_name(exe_lower: str) -> str:
     """Strip .exe, replace underscores/hyphens with spaces, title-case."""
     stem = exe_lower
@@ -57,10 +62,21 @@ def _exe_to_name(exe_lower: str) -> str:
     return stem.title()
 
 
-def _confident_match(exe_lower: str, result: dict) -> bool:
-    """Return True if the RAWG result is a confident match for exe_lower."""
-    query_name = _normalize(_exe_to_name(exe_lower))
+def _confident_match(exe_lower: str, result: dict, name: Optional[str] = None) -> bool:
+    """Return True if the RAWG result is a confident match for exe_lower.
+
+    When the tracker supplied the game's real title (`name`, e.g. from the
+    Steam app manifest), that is compared first — it is far more reliable
+    than a name guessed from the exe file name.
+    """
     result_name = _normalize(result.get("name", ""))
+    if name and _loose(name):
+        # The real title decides on its own: the exe-name heuristic below is
+        # loose enough to accept "Alone in the Dark" for lurkinthedark.exe.
+        a = _loose(name)
+        b = _loose(result.get("name", ""))
+        return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= 0.80
+    query_name = _normalize(_exe_to_name(exe_lower))
     ratio = difflib.SequenceMatcher(None, query_name, result_name).ratio()
     if ratio >= 0.60:
         return True
@@ -118,15 +134,22 @@ def _failed_item(exe_lower: str, fetched_at: int) -> dict:
     }
 
 
-def fetch_metadata(exe_lower: str) -> dict:
+def fetch_metadata(exe_lower: str, name: Optional[str] = None) -> dict:
     """
-    Search RAWG for exe_lower. Always returns a metadata dict.
-    Sets resolution_failed=True if no confident match or any network error.
-    Does NOT retry on 429 — caller (cron) handles that on the next pass.
+    Search RAWG for a game. Always returns a metadata dict.
+
+    `name` is the title the tracker reported for the session; it is searched
+    when present (the exe file name is only a fallback — "lurkinthedark.exe"
+    style guesses rarely match). Sets resolution_failed=True if no confident
+    match or any network error. Does NOT retry on 429 — the next pass will.
     """
     fetched_at = int(time.time())
     key = _api_key()
-    search_name = _exe_to_name(exe_lower)
+    if not key:
+        # Every call would 401; record the miss (retried daily) and skip the network.
+        logger.error("rawg_api_key_missing exe=%s", exe_lower)
+        return _failed_item(exe_lower, fetched_at)
+    search_name = (name or "").strip() or _exe_to_name(exe_lower)
 
     try:
         resp = requests.get(
@@ -150,8 +173,8 @@ def fetch_metadata(exe_lower: str) -> dict:
     if not results:
         return _failed_item(exe_lower, fetched_at)
 
-    top = results[0]
-    if not _confident_match(exe_lower, top):
+    top = next((r for r in results if _confident_match(exe_lower, r, name)), None)
+    if top is None:
         return _failed_item(exe_lower, fetched_at)
 
     # Fetch detail for genres + tags

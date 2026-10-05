@@ -14,6 +14,8 @@ from shared.db import (
     revoke_device,
     touch_device,
 )
+from shared.imports import get_import_request, get_steam_link
+from shared.steam_api import STEAMID64_BASE
 from shared.schemas import DevicePatch
 
 logger = Logger(service="deckd-devices")
@@ -72,7 +74,19 @@ def _heartbeat(event: dict) -> dict:
         # Don't echo the client-supplied id back (existence oracle).
         logger.warning("heartbeat_from_revoked_device", user_id=user_id)
         return _resp(403, {"error": "device_revoked"})
-    return _resp(200, {"device": _serialize(device)})
+    # The web's "Re-import" button leaves a request; the tracker sees it here
+    # on its next check-in (about a minute) and runs the launcher import.
+    # A connected Steam account tells the tracker which local account is the
+    # user's (several can share a PC) for the private-profile fallback.
+    link = get_steam_link(user_id)
+    return _resp(200, {
+        "device": _serialize(device),
+        "import_requested_at": get_import_request(user_id),
+        "steam": {
+            "account_id": str(int(link["steamid"]) - STEAMID64_BASE),
+            "api_ok": bool(link.get("api_ok")),
+        } if link else None,
+    })
 
 
 def _list(event: dict) -> dict:

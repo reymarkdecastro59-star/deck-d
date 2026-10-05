@@ -67,3 +67,43 @@ class ProfilePatch(BaseModel):
 
 class DevicePatch(BaseModel):
     device_name: str = Field(min_length=1, max_length=64)
+
+
+# ── Launcher imports ──────────────────────────────────────────────────────────
+# Bounds keep one upload small enough for a single Lambda run and stop a
+# client from storing junk: ids are short launcher keys (Steam app ids such
+# as "1145360"), titles are display text, playtime is capped at 50 years.
+_MAX_IMPORT_GAMES = 3000
+_MAX_IMPORT_MINUTES = 50 * 365 * 24 * 60
+
+
+class ImportGame(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    external_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.\-]+$")
+    # Empty is allowed for Steam: the backend fills uninstalled games' titles.
+    name: str = Field(default="", max_length=200)
+    minutes: int = Field(ge=0, le=_MAX_IMPORT_MINUTES)
+    last_played: int | None = Field(default=None, ge=0)
+    launcher: str | None = Field(default=None, max_length=24, pattern=r"^[A-Za-z0-9 .\-]+$")
+
+    @model_validator(mode="after")
+    def _strip(self) -> "ImportGame":
+        self.name = self.name.strip()
+        if self.last_played is not None and self.last_played > int(time.time()) + _CLOCK_SKEW_TOLERANCE_SEC:
+            raise ValueError("last_played is in the future")
+        return self
+
+
+class ImportPut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_label: str | None = Field(default=None, max_length=64)
+    games: list[ImportGame] = Field(max_length=_MAX_IMPORT_GAMES)
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "ImportPut":
+        ids = [g.external_id for g in self.games]
+        if len(ids) != len(set(ids)):
+            raise ValueError("duplicate external_id")
+        return self
