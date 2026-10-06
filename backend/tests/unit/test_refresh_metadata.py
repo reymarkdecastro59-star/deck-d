@@ -1,5 +1,7 @@
 """Unit tests for handlers.refresh_metadata cron handler."""
 import time
+
+from shared.canonical import cache_id
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
@@ -99,14 +101,15 @@ def test_discovers_new_exe_from_sessions(ddb_table, monkeypatch):
     now = int(time.time())
     db_module.put_session(_session("newgame.exe", now - 100, "s1"))
 
-    mock_fetch = MagicMock(side_effect=lambda exe: _good_rawg_result(exe))
+    mock_fetch = MagicMock(side_effect=lambda exe, name=None: _good_rawg_result(exe))
     monkeypatch.setattr(refresh_module, "fetch_metadata", mock_fetch)
 
     result = refresh_module.handler({}, None)
 
     assert result["new"] >= 1
     assert result["processed"] >= 1
-    item = db_module.get_game_metadata("newgame.exe")
+    # Looked up by the reported title, so stored per exe + title.
+    item = db_module.get_game_metadata(cache_id("newgame.exe", "Test Game"))
     assert item is not None
     assert item["rawg_id"] == 42
 
@@ -120,7 +123,7 @@ def test_refreshes_stale_items(ddb_table, monkeypatch):
     stale_fetched = now - 10 * 86_400  # 10 days ago; default stale_days=7
     db_module.put_game_metadata(_meta("stale.exe", stale_fetched))
 
-    mock_fetch = MagicMock(side_effect=lambda exe: _good_rawg_result(exe))
+    mock_fetch = MagicMock(side_effect=lambda exe, name=None: _good_rawg_result(exe))
     monkeypatch.setattr(refresh_module, "fetch_metadata", mock_fetch)
     monkeypatch.setenv("REFRESH_STALE_DAYS", "7")
 
@@ -139,7 +142,7 @@ def test_skips_fresh_items(ddb_table, monkeypatch):
     fresh_fetched = now - 1 * 86_400  # 1 day ago, well within 7-day window
     db_module.put_game_metadata(_meta("fresh.exe", fresh_fetched))
 
-    mock_fetch = MagicMock(side_effect=lambda exe: _good_rawg_result(exe))
+    mock_fetch = MagicMock(side_effect=lambda exe, name=None: _good_rawg_result(exe))
     monkeypatch.setattr(refresh_module, "fetch_metadata", mock_fetch)
     monkeypatch.setenv("REFRESH_STALE_DAYS", "7")
 
@@ -158,7 +161,7 @@ def test_respects_max_calls_per_run(ddb_table, monkeypatch):
     for i in range(10):
         db_module.put_session(_session(f"exe{i}.exe", now - 100, f"s{i}"))
 
-    mock_fetch = MagicMock(side_effect=lambda exe: _good_rawg_result(exe))
+    mock_fetch = MagicMock(side_effect=lambda exe, name=None: _good_rawg_result(exe))
     monkeypatch.setattr(refresh_module, "fetch_metadata", mock_fetch)
     monkeypatch.setenv("MAX_CALLS_PER_RUN", "3")
 
@@ -182,7 +185,7 @@ def test_records_resolution_failed(ddb_table, monkeypatch):
     result = refresh_module.handler({}, None)
 
     assert result["failed"] >= 1
-    item = db_module.get_game_metadata("mystery.exe")
+    item = db_module.get_game_metadata(cache_id("mystery.exe", "Test Game"))
     assert item is not None
     assert item["resolution_failed"] is True
     assert item["rawg_id"] is None
@@ -197,7 +200,7 @@ def test_failed_item_not_retried_if_recent(ddb_table, monkeypatch):
     recent_fail = now - 5 * 86_400  # 5 days ago, failed_retry_days=30 → not due
     db_module.put_game_metadata(_meta("failing.exe", recent_fail, resolution_failed=True))
 
-    mock_fetch = MagicMock(side_effect=lambda exe: _good_rawg_result(exe))
+    mock_fetch = MagicMock(side_effect=lambda exe, name=None: _good_rawg_result(exe))
     monkeypatch.setattr(refresh_module, "fetch_metadata", mock_fetch)
     monkeypatch.setenv("FAILED_RETRY_DAYS", "30")
 
@@ -205,3 +208,35 @@ def test_failed_item_not_retried_if_recent(ddb_table, monkeypatch):
 
     mock_fetch.assert_not_called()
     assert result["processed"] == 0
+
+
+# ---------------------------------------------------------------------------
+# (g) the tracker's game title is used for the RAWG lookup, not just the exe
+# ---------------------------------------------------------------------------
+
+def test_passes_session_game_name_to_lookup(ddb_table, monkeypatch):
+    now = int(time.time())
+    s = _session("lurk in the dark prologue.exe", now - 100, "s1")
+    s.game_name = "Lurk in the Dark : Prologue"
+    db_module.put_session(s)
+
+    mock_fetch = MagicMock(side_effect=lambda exe, name=None: _good_rawg_result(exe))
+    monkeypatch.setattr(refresh_module, "fetch_metadata", mock_fetch)
+
+    refresh_module.handler({}, None)
+
+    mock_fetch.assert_any_call("lurk in the dark prologue.exe", "Lurk in the Dark : Prologue")
+
+
+def test_failed_lookups_retry_after_one_day(ddb_table, monkeypatch):
+    now = int(time.time())
+    failed = _failed_rawg_result("mystery.exe")
+    failed["fetched_at"] = now - 2 * 86_400
+    db_module.put_game_metadata(failed)
+
+    mock_fetch = MagicMock(side_effect=lambda exe, name=None: _good_rawg_result(exe))
+    monkeypatch.setattr(refresh_module, "fetch_metadata", mock_fetch)
+
+    refresh_module.handler({}, None)
+
+    assert db_module.get_game_metadata("mystery.exe")["rawg_id"] == 42

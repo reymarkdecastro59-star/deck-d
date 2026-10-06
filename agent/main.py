@@ -8,7 +8,11 @@ import pystray
 from PIL import Image, ImageDraw
 
 import auth
+import autostart
+import importer
+import companion
 import notifications
+import single_instance
 import token_store
 import watcher
 import sync
@@ -19,16 +23,38 @@ from config import SYNC_INTERVAL_SEC
 
 # Icon reference set once main() starts, so _refresh_tray can find it.
 _ICON_REF = None
+# The companion window (themed sign-in + mini dashboard), created in main().
+_UI = None
+_services_started = False
+_services_lock = threading.Lock()
 
 
 def _make_icon():
-    img = Image.new("RGB", (64, 64), color=(15, 23, 42))
+    """Brand mark: the DECK'D signal tick inside a 3:4 card, on Ink."""
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.ellipse([16, 16, 48, 48], fill=(34, 211, 238))
+    draw.rounded_rectangle([4, 4, 60, 60], radius=14, fill=(11, 13, 16, 255))
+    draw.rounded_rectangle([20, 12, 44, 52], radius=5, outline=(245, 247, 248, 255), width=4)
+    draw.rounded_rectangle([29, 22, 35, 40], radius=2, fill=(85, 230, 193, 255))
     return img
 
 
+def _heartbeat_once():
+    try:
+        sync.send_heartbeat()
+    except Exception as exc:  # send_heartbeat never raises; belt and braces
+        print(f"[deckd] heartbeat raised: {exc}", file=sys.stderr)
+
+
 def _sync_loop():
+    # Check in immediately so the web shows this tracker as connected within
+    # seconds of launch, not after the first game session.
+    _heartbeat_once()
+    # First sign-in on this PC: bring in existing launcher playtime once.
+    try:
+        importer.maybe_run_first_time()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[deckd] first import raised: {exc}", file=sys.stderr)
     while True:
         time.sleep(SYNC_INTERVAL_SEC)
         try:
@@ -37,6 +63,12 @@ def _sync_loop():
             # Never let a single sync tick kill the thread — that would
             # leave the queue growing silently until the user notices.
             print(f"[deckd] sync tick raised: {exc}", file=sys.stderr)
+        _heartbeat_once()
+        # The web's "Re-import" button: the request arrives on the heartbeat.
+        try:
+            importer.maybe_run_requested(sync.import_requested_at())
+        except Exception as exc:  # noqa: BLE001 — never kill the sync thread
+            print(f"[deckd] import raised: {exc}", file=sys.stderr)
         _refresh_tray()  # Phase 6: pick up any state changes (new logins, revocations cleared, etc.)
 
 
@@ -79,7 +111,12 @@ def _make_checked_fn(uid):
 def _build_menu():
     store = token_store.read()
     active = store.active_healthy()
-    items = [_header_item(store), pystray.Menu.SEPARATOR]
+    items = [
+        # Left-clicking the tray icon runs the default item: open the window.
+        pystray.MenuItem("Open DECK'D", _on_open, default=True),
+        _header_item(store),
+        pystray.Menu.SEPARATOR,
+    ]
 
     if store.accounts:
         submenu_items = []
@@ -97,6 +134,11 @@ def _build_menu():
         items.append(pystray.MenuItem("Switch account", pystray.Menu(*submenu_items)))
 
     items.append(pystray.MenuItem("Add account…", _on_add_account))
+    if autostart.is_supported():
+        items.append(pystray.MenuItem(
+            "Start with Windows", _on_toggle_autostart,
+            checked=lambda item: autostart.is_enabled(),
+        ))
     if active is not None:
         items.append(pystray.MenuItem("Log out this account", _on_logout))
     if any(a.revoked_at for a in store.accounts):
@@ -178,11 +220,46 @@ def _confirm_switch_dialog(open_games) -> bool:
         return False
 
 
+def _on_open(icon=None, item=None):
+    if _UI is not None:
+        _UI.show()
+
+
 def _on_add_account(icon, item):
-    """Spawn login.py as a detached subprocess. Fire-and-forget — tray reads store fresh."""
-    login_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "login.py")
-    subprocess.Popen([sys.executable, login_path])
+    """Open the themed sign-in view. The window's sign-in handler refreshes
+    the tray and starts tracking once the account is added."""
+    if _UI is not None:
+        _UI.show("signin")
+
+
+def _on_toggle_autostart(icon, item):
+    (autostart.disable if autostart.is_enabled() else autostart.enable)()
     _refresh_tray()
+
+
+def _on_signed_in():
+    _start_services_once()
+    _refresh_tray()
+
+
+def _start_services_once():
+    """Start detection, sync and power hooks exactly once per process —
+    on launch when already signed in, otherwise right after first sign-in."""
+    global _services_started
+    with _services_lock:
+        if _services_started:
+            return
+        _services_started = True
+    # Phase 5: close any sessions the watcher left open on last crash BEFORE
+    # the fresh watcher starts, so we don't race on the same row.
+    closed, dead = session.recover_orphan_sessions()
+    if closed or dead:
+        print(f"[deckd] Startup crash recovery: closed {closed}, dead-lettered {dead}",
+              file=sys.stderr)
+    watcher.start()
+    threading.Thread(target=_sync_loop, daemon=True).start()
+    # Windows power events → close sessions on suspend, re-open on resume.
+    power.start(on_suspend=watcher.suspend_all, on_resume=watcher.resume_check)
 
 
 def _on_logout(icon, item):
@@ -211,37 +288,61 @@ def _on_quit(icon, item):
     watcher.stop()
     power.stop()
     icon.stop()
+    if _UI is not None:
+        _UI.quit()  # ends webview.start() on the main thread
+
+
+_AUTOSTART_MARKER = os.path.join(os.path.expanduser("~"), ".deckd", "autostart.initialized")
+
+
+def _init_autostart():
+    """Packaged app: Start with Windows defaults to on at first launch, and
+    stays pointed at this exe afterwards — unless the user turned it off."""
+    marker_exists = os.path.exists(_AUTOSTART_MARKER)
+    autostart.ensure_default_on(marker_exists)
+    if not marker_exists and autostart.is_supported():
+        try:
+            os.makedirs(os.path.dirname(_AUTOSTART_MARKER), exist_ok=True)
+            open(_AUTOSTART_MARKER, "w").close()
+        except OSError:
+            pass
 
 
 def main():
-    global _ICON_REF
-    if not is_logged_in():
-        print("Not logged in. Run: python login.py")
+    global _ICON_REF, _UI
+    import webview
+
+    # One tracker per user: a second launch brings the first one's window forward.
+    if not single_instance.acquire():
+        single_instance.signal_existing()
         return
 
-    # Phase 5: close any sessions the watcher left open on last crash BEFORE
-    # the fresh watcher starts, so we don't race on the same row.
-    closed, dead = session.recover_orphan_sessions()
-    if closed or dead:
-        print(f"[deckd] Startup crash recovery: closed {closed}, dead-lettered {dead}",
-              file=sys.stderr)
+    background = autostart.BACKGROUND_FLAG in sys.argv  # started by Windows at sign-in
+    _init_autostart()
 
-    watcher.start()
-    threading.Thread(target=_sync_loop, daemon=True).start()
+    signed_in = is_logged_in()
+    if signed_in:
+        _start_services_once()
 
-    # Phase 5: Windows power events → close sessions on suspend, re-open on
-    # resume. Non-Windows: power.start() is a no-op stub.
-    power.start(on_suspend=watcher.suspend_all, on_resume=watcher.resume_check)
+    _UI = companion.Companion(on_signed_in=_on_signed_in, on_signed_out=_refresh_tray)
+    # Hidden only for a signed-in autostart; first run / manual launch shows it.
+    _UI.create(hidden=signed_in and background)
+    single_instance.listen_for_show(_UI.show)
 
     store = token_store.read()
-    icon = pystray.Icon(
-        "DECK'D",
-        _make_icon(),
-        _tooltip_for(store),
-        menu=pystray.Menu(_build_menu),
-    )
+    icon = pystray.Icon("DECK'D", _make_icon(), _tooltip_for(store), menu=pystray.Menu(_build_menu))
     _ICON_REF = icon
-    icon.run()
+    icon.run_detached()  # tray on its own thread; the window owns the main thread
+
+    webview.start(gui="edgechromium", private_mode=True)
+
+    # Window destroyed (Quit) — make sure everything is down.
+    watcher.stop()
+    power.stop()
+    try:
+        icon.stop()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 if __name__ == "__main__":

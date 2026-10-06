@@ -1,9 +1,11 @@
+import sys
 import psutil
 import time
 import threading
 
 import notifications
 import token_store
+from auth import get_active_user_id
 from config import POLL_INTERVAL_SEC
 from session import open_session, close_session
 from games import get_tracked
@@ -49,8 +51,14 @@ def _poll_once() -> None:
 
 
 def _poll():
+    # A crash inside _poll_once (e.g. psutil hiccup, launcher-scan exception)
+    # would kill this daemon thread and stop all game detection until restart.
+    # Log + continue instead — a bad tick is fine, a dead thread is not.
     while _running:
-        _poll_once()
+        try:
+            _poll_once()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[deckd] watcher poll tick raised: {exc}", file=sys.stderr)
         time.sleep(POLL_INTERVAL_SEC)
 
 

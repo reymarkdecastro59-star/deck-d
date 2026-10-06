@@ -18,6 +18,8 @@ import time
 from typing import Optional
 
 import boto3
+from botocore import UNSIGNED
+from botocore.config import Config
 
 import token_store
 from config import CLIENT_ID, REGION
@@ -27,7 +29,14 @@ _REFRESH_HEADROOM_SEC = 600
 
 
 def _cognito_client():
-    return boto3.client("cognito-idp", region_name=REGION)
+    # Unsigned on purpose: InitiateAuth (password + refresh flows) is a public
+    # Cognito API. A signed client resolves the machine's default AWS
+    # credential chain, so a developer `aws login` profile (needs
+    # botocore[crt]) broke tracker sign-in and token refresh with
+    # "Missing Dependency: Using the login credential provider…".
+    return boto3.client(
+        "cognito-idp", region_name=REGION, config=Config(signature_version=UNSIGNED)
+    )
 
 
 def _email_from_id_token(id_token: str) -> str:

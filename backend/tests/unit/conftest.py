@@ -1,4 +1,4 @@
-﻿import os
+import os
 import pytest
 import boto3
 from moto import mock_aws
@@ -17,18 +17,34 @@ class FakeLambdaContext:
     aws_request_id = "test-request-id"
 
 
+_TEST_ENV = {
+    "AWS_ACCESS_KEY_ID": "testing",
+    "AWS_SECRET_ACCESS_KEY": "testing",
+    "AWS_SECURITY_TOKEN": "testing",
+    "AWS_SESSION_TOKEN": "testing",
+    "AWS_DEFAULT_REGION": "us-east-1",
+    "TABLE_NAME": TABLE_NAME,
+}
+
+
+def _set_test_env():
+    os.environ.update(_TEST_ENV)
+
+
 @pytest.fixture(scope="function")
 def aws_credentials():
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-    os.environ["TABLE_NAME"] = TABLE_NAME
+    _set_test_env()
 
 
-@pytest.fixture(scope="function")
-def ddb_table(aws_credentials):
+@pytest.fixture(scope="session")
+def _mocked_table():
+    """Start moto and create the table ONCE per test run.
+
+    Starting mock_aws and creating a table with two GSIs cost 4–7 s per test
+    (≈9 minutes for the suite). Tests stay isolated because `ddb_table`
+    empties the table after every test instead of rebuilding it.
+    """
+    _set_test_env()
     with mock_aws():
         client = boto3.client("dynamodb", region_name="us-east-1")
         client.create_table(
@@ -65,11 +81,34 @@ def ddb_table(aws_credentials):
                 },
             ],
         )
-        # Reset the module-level _table cache so each test gets a fresh resource
-        import shared.db as db_module
-        db_module._table = None
         yield boto3.resource("dynamodb", region_name="us-east-1").Table(TABLE_NAME)
+
+
+def _empty_table(table):
+    """Delete every item (paginated scan + batch delete) so the next test starts clean."""
+    kwargs = {"ProjectionExpression": "pk, sk"}
+    while True:
+        page = table.scan(**kwargs)
+        with table.batch_writer() as batch:
+            for item in page.get("Items", []):
+                batch.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+        if "LastEvaluatedKey" not in page:
+            return
+        kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+
+
+@pytest.fixture(scope="function")
+def ddb_table(_mocked_table):
+    # Tests may mutate env vars (e.g. TABLE_NAME); restore before each test.
+    _set_test_env()
+    # Reset the module-level _table cache so each test gets a fresh resource
+    import shared.db as db_module
+    db_module._table = None
+    try:
+        yield _mocked_table
+    finally:
         db_module._table = None
+        _empty_table(_mocked_table)
 
 
 def make_event(
@@ -104,3 +143,13 @@ def make_event(
             }
         },
     }
+
+
+@pytest.fixture(autouse=True)
+def _rawg_offline(monkeypatch):
+    """A fake RAWG key for code that requires one, and no real network from
+    the upload-time art lookup (tests of ensure_metadata patch it themselves)."""
+    monkeypatch.setenv("RAWG_API_KEY", os.environ.get("RAWG_API_KEY") or "test-key")
+    import shared.metadata_ingest as mi
+    from shared.rawg import _failed_item
+    monkeypatch.setattr(mi, "fetch_metadata", lambda exe, name=None: _failed_item(exe, 0))

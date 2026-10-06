@@ -207,3 +207,11 @@ def test_fetch_metadata_tags_capped(mock_get):
     result = fetch_metadata("witcher3.exe")
 
     assert len(result["tags"]) == 15
+
+
+def test_confident_match_uses_reported_title_despite_punctuation():
+    from shared.rawg import _confident_match
+    result = {"name": "Lurk in the Dark: Prologue", "slug": "lurk-in-the-dark-prologue"}
+    # The exe name alone is a weak guess; the tracker's title makes it certain.
+    assert _confident_match("lurkinthedark.exe", result, "Lurk in the Dark : Prologue")
+    assert not _confident_match("lurkinthedark.exe", {"name": "Alone in the Dark", "slug": "x"}, "Lurk in the Dark : Prologue")

@@ -1,4 +1,4 @@
-﻿AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: DECK'D backend - gaming habit tracker
 
@@ -12,6 +12,18 @@ Globals:
         TABLE_NAME: !Ref DeckdTable
         USER_POOL_ID: !Ref UserPool
         STAGE: !Ref Stage
+        # Every function that can look up game art needs the key (sessions
+        # resolve art on first upload; imports resolve Steam titles).
+        RAWG_API_KEY: !Ref RawgApiKey
+
+Rules:
+  # A deploy without the key used to succeed silently (Default "") and
+  # wipe the previous value, leaving every game without art and Trending
+  # empty. Fail the deploy instead: pass RawgApiKey=<key> to sam deploy.
+  RequireRawgApiKey:
+    Assertions:
+      - Assert: !Not [!Equals [!Ref RawgApiKey, '']]
+        AssertDescription: RawgApiKey must be set (sam deploy --parameter-overrides RawgApiKey=...)
 
 Parameters:
   Stage:
@@ -24,6 +36,21 @@ Parameters:
     NoEcho: true
     Default: ""
 
+  SteamApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >
+      Steam Web API key (steamcommunity.com/dev/apikey) for "Connect Steam".
+      Empty = the button is hidden and only the PC tracker import works.
+
+  WebOrigins:
+    Type: String
+    Default: "http://localhost:5173,http://127.0.0.1:5173"
+    Description: >
+      Comma-separated web app origins Steam sign-in may return to. Anything
+      else is refused (prevents an open redirect).
+
   BedrockInferenceProfileId:
     Type: String
     Default: apac.anthropic.claude-haiku-4-5-v1:0
@@ -31,6 +58,22 @@ Parameters:
       Bedrock cross-region inference profile ID for Claude Haiku 4.5.
       The Lambda constructs the full ARN at cold start from its own
       invoked_function_arn — this parameter only supplies the ID suffix.
+
+  SesSenderEmail:
+    Type: String
+    Default: reymarkdecastro59@gmail.com
+    Description: Verified SES sender identity (must be verified in this region).
+
+  SesRecipientEmail:
+    Type: String
+    Default: reymarkdecastro59@gmail.com
+    Description: Where contact-form submissions are delivered.
+
+  HcaptchaSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: hCaptcha secret key. Contact endpoint returns 500 until this is set.
 
 Resources:
 
@@ -116,11 +159,31 @@ Resources:
       Name: !Sub deckd-api-${Stage}
       StageName: !Ref Stage
       Cors:
-        AllowMethods: "'GET,POST,DELETE,PATCH,OPTIONS'"
+        AllowMethods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization,X-Device-Id,X-Device-Name'"
         AllowOrigin: "'*'"
+      # API Gateway's own error replies (expired/invalid token 401, 403, throttling,
+      # 5xx) carry no CORS headers by default, so browsers hid them as
+      # "Failed to fetch" and the web app could never react to an expired
+      # session. Mirror the CORS headers onto every gateway-generated response.
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Device-Id,X-Device-Name'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Device-Id,X-Device-Name'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
+        # CORS preflight (OPTIONS) must not inherit the Cognito authorizer,
+        # otherwise browsers can't call any endpoint that per-event opts out
+        # of auth (e.g. POST /contact). Explicit endpoints still enforce their
+        # own Authorizer setting.
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
@@ -265,6 +328,96 @@ Resources:
             RestApiId: !Ref Api
             Path: /devices/{device_id}
             Method: DELETE
+        HeartbeatDevice:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /devices/heartbeat
+            Method: POST
+
+  ImportsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-imports-${Stage}
+      CodeUri: src/
+      Handler: handlers.imports.handler
+      # A large library can need ~40 Steam title lookups plus batch writes.
+      Timeout: 29
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        ListImports:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /imports
+            Method: GET
+        RequestImport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /imports/request
+            Method: POST
+        PutImport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /imports/{source}
+            Method: PUT
+        DeleteImport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /imports/{source}
+            Method: DELETE
+
+  SteamFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-steam-${Stage}
+      CodeUri: src/
+      Handler: handlers.steam.handler
+      # Steam verification + GetOwnedGames + writing a large library.
+      Timeout: 29
+      Environment:
+        Variables:
+          STEAM_API_KEY: !Ref SteamApiKey
+          WEB_ORIGINS: !Ref WebOrigins
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        SteamStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /steam
+            Method: GET
+        SteamConnect:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /steam/connect
+            Method: POST
+        SteamLink:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /steam/link
+            Method: POST
+        SteamUnlink:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /steam/link
+            Method: DELETE
+        SteamSync:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /steam/sync
+            Method: POST
 
   ProfileFunction:
     Type: AWS::Serverless::Function
@@ -351,6 +504,8 @@ Resources:
       Environment:
         Variables:
           RAWG_API_KEY: !Ref RawgApiKey
+          # Trending = Steam's most-played chart (RAWG is the fallback).
+          STEAM_API_KEY: !Ref SteamApiKey
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DeckdTable
@@ -361,6 +516,58 @@ Resources:
             Schedule: cron(0 3 * * ? *)
             Name: !Sub deckd-refresh-metadata-daily-${Stage}
             Description: Daily RAWG metadata refresh at 03:00 UTC
+        TrendingCron:
+          Type: Schedule
+          Properties:
+            # "Popular right now": refresh the chart every 6 hours (cheap:
+            # one chart call plus ~10 store lookups).
+            Schedule: rate(6 hours)
+            Input: '{"trending_only": true}'
+            Name: !Sub deckd-refresh-trending-${Stage}
+            Description: Steam most-played chart every 6 hours
+
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub deckd-notifications-${Stage}
+      CodeUri: src/
+      Handler: handlers.notifications.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DeckdTable
+      Events:
+        GetNotifications:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /notifications
+            Method: GET
+
+  ContactFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.contact.handler
+      CodeUri: src/
+      Environment:
+        Variables:
+          SES_SENDER_EMAIL: !Ref SesSenderEmail
+          SES_RECIPIENT_EMAIL: !Ref SesRecipientEmail
+          HCAPTCHA_SECRET: !Ref HcaptchaSecret
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource:
+                - !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderEmail}
+      Events:
+        ContactPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /contact
+            Method: POST
+            Auth:
+              Authorizer: NONE
 
 # -- Outputs ------------------------------------------------------------------
 

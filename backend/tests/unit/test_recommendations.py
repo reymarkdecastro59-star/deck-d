@@ -398,3 +398,16 @@ def test_genre_unresolved_metadata_does_not_count_toward_threshold(ddb_table):
 
     body = json.loads(resp["body"])
     assert body["genre_based"] is None
+
+
+def test_trending_tier_skips_personal_tiers(ddb_table, monkeypatch):
+    import handlers.recommendations as rec
+    _seed_trending(ddb_table, _SAMPLE_GAMES)
+    genre = MagicMock(side_effect=AssertionError("genre tier must not run"))
+    monkeypatch.setattr(rec, "_genre_based_for", genre)
+    monkeypatch.setattr(rec, "_top_picks_for", genre)
+    resp = handler(make_event(method="GET", query_params={"tier": "trending"}), FakeLambdaContext())
+    body = json.loads(resp["body"])
+    assert resp["statusCode"] == 200
+    assert [g["name"] for g in body["trending"]] == ["Elden Ring", "Hades"] or len(body["trending"]) == 2
+    assert "top_picks" not in body and "genre_based" not in body

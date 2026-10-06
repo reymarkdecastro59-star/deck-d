@@ -15,3 +15,6 @@ GAME_BLACKLIST: set[str] = set()
 
 SYNC_INTERVAL_SEC = 60
 POLL_INTERVAL_SEC = 5
+
+# Web app the companion window links to (Open dashboard, Create account).
+WEB_URL = "http://localhost:5173"

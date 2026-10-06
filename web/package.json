@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "fetch:covers": "node scripts/fetch-covers.mjs",
     "lint": "oxlint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -21,15 +22,21 @@
     ]
   },
   "dependencies": {
+    "@hcaptcha/react-hcaptcha": "^1.11.1",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@react-three/postprocessing": "^3.1.1",
     "amazon-cognito-identity-js": "^6.3.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "lenis": "^1.3.26",
     "lucide-react": "^1.33.0",
     "motion": "^13.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
@@ -43,6 +50,7 @@
     "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.19",
     "vite": "^8.2.0"
   }

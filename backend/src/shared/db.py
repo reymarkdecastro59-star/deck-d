@@ -22,17 +22,27 @@ def get_trending_daily() -> Optional[dict]:
     return resp.get("Item")
 
 
-def put_trending_daily(games: list, updated_at: str, ttl: int) -> None:
-    """Write (or overwrite) the daily trending cache item."""
-    get_table().put_item(
-        Item={
-            "pk": _TRENDING_PK,
-            "sk": _TRENDING_SK,
-            "games": games,
-            "updated_at": updated_at,
-            "ttl": ttl,
-        }
-    )
+def put_trending_daily(games: list, updated_at: str, ttl: Optional[int] = None,
+                       source: Optional[str] = None) -> None:
+    """Write (or overwrite) the daily trending cache item.
+
+    The item is written WITHOUT a TTL by default. It is replaced every day by
+    the cron, and on a RAWG failure the cron deliberately keeps the old item
+    so Trending can serve stale data (with its `updated_at`) instead of going
+    blank. A TTL defeated that: one missed refresh let DynamoDB delete the
+    item (bug B8). `ttl` stays optional only for callers/tests that need it.
+    """
+    item = {
+        "pk": _TRENDING_PK,
+        "sk": _TRENDING_SK,
+        "games": games,
+        "updated_at": updated_at,
+    }
+    if source:
+        item["source"] = source  # "steam" (most played) or "rawg" (fallback)
+    if ttl is not None:
+        item["ttl"] = ttl
+    get_table().put_item(Item=item)
 
 
 # ---------------------------------------------------------------------------
@@ -134,9 +144,9 @@ def batch_get_game_metadata(exe_lowers: list[str]) -> dict[str, dict]:
         }
         resp = resource.batch_get_item(RequestItems=request)
         for item in resp.get("Responses", {}).get(table_name, []):
-            exe = item.get("game_exe")
-            if exe:
-                out[exe] = item
+            cid = item.get("cache_id") or item.get("game_exe")
+            if cid:
+                out[cid] = item
         unprocessed = resp.get("UnprocessedKeys", {}).get(table_name, {}).get("Keys", [])
         if unprocessed:
             logger.warning(
@@ -167,13 +177,44 @@ def iter_all_game_metadata(max_items: int = 5000) -> list[dict]:
     return items
 
 
-def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[str]:
+def iter_recent_session_games(since_epoch: int, max_items: int = 10_000) -> dict[str, dict]:
+    """{cache id: {"exe", "title", "users"}} for recent sessions — one entry
+    per distinct exe + title (see canonical.cache_id); `users` is the set of
+    accounts reporting it, so the refresh job can rank by real popularity."""
+    from .canonical import cache_id
+
+    seen: dict[str, dict] = {}
+    count = 0
+    kwargs: dict = {
+        "FilterExpression": (
+            Attr("sk").begins_with("SESSION#") & Attr("started_at").gte(since_epoch)
+        ),
+    }
+    while True:
+        resp = get_table().scan(**kwargs)
+        for item in resp.get("Items", []):
+            exe = item.get("game_exe", "").lower()
+            if exe:
+                name = item.get("game_name") or ""
+                entry = seen.setdefault(cache_id(exe, name), {"exe": exe, "title": name, "users": set()})
+                entry["users"].add(item.get("user_id") or item.get("pk", ""))
+            count += 1
+            if count >= max_items:
+                return seen
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    return seen
+
+
+def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> dict[str, str]:
     """
     Scan all SESSION# items with started_at >= since_epoch.
-    Returns the distinct lowercased game_exe values seen.
+    Returns {lowercased game_exe: game_name reported by the tracker}.
     Background job path — not per-request.
     """
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     count = 0
     kwargs: dict = {
         "FilterExpression": (
@@ -185,7 +226,7 @@ def iter_recent_session_exes(since_epoch: int, max_items: int = 10_000) -> set[s
         for item in resp.get("Items", []):
             exe = item.get("game_exe", "").lower()
             if exe and exe not in seen:
-                seen.add(exe)
+                seen[exe] = item.get("game_name") or ""
             count += 1
             if count >= max_items:
                 return seen

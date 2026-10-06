@@ -76,10 +76,20 @@ def _mock_cognito_client():
 # ---------------------------------------------------------------------------
 
 
-def test_get_profile_not_found(ddb_table):
+def test_get_profile_creates_on_first_read(ddb_table):
+    """A signed-in user with no sessions yet must still get a profile (was 404).
+
+    Profiles used to be created only when the tracker uploaded a first
+    session, so Settings failed for every new account.
+    """
     event = make_event(method="GET")
     resp = handler(event, FakeLambdaContext())
-    assert resp["statusCode"] == 404
+    assert resp["statusCode"] == 200
+    body = json.loads(resp["body"])
+    assert body["profile"]["user_id"] == USER_ID
+    assert body["profile"]["email"] == USER_EMAIL
+    # Persisted, not just synthesised for the response.
+    assert db_module.get_profile(USER_ID) is not None
 
 
 def test_get_profile_found(ddb_table):
@@ -110,10 +120,11 @@ def test_patch_profile_unknown_fields_ignored(ddb_table):
     assert "unknown_field" not in body["profile"]
 
 
-def test_patch_profile_not_found(ddb_table):
+def test_patch_profile_creates_then_updates(ddb_table):
     event = make_event(method="PATCH", body={"email": "x@x.com"})
     resp = handler(event, FakeLambdaContext())
-    assert resp["statusCode"] == 404
+    assert resp["statusCode"] == 200
+    assert json.loads(resp["body"])["profile"]["email"] == "x@x.com"
 
 
 def test_patch_profile_invalid_email(ddb_table):

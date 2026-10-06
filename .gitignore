@@ -1,4 +1,4 @@
-﻿# Agent config (contains live API URL + Cognito IDs - keep local)
+# Agent config (contains live API URL + Cognito IDs - keep local)
 agent/config.py
 
 __pycache__/
@@ -11,7 +11,20 @@ docs/
 figma/
 web/node_modules/
 web/dist/
+.env
 .env.local
 .env.*.local
+!.env.example
 .DS_Store
 Thumbs.db
+
+# Large binary artifacts served locally by Vite — not part of source
+web/public/downloads/
+agent/build/
+agent/dist/
+
+# Local tool output and crash dumps (never source)
+.playwright-mcp/
+graphify-out/
+rivemcp-stderr.log
+*.stackdump

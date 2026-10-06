@@ -1,0 +1,108 @@
+.previs-copy {
+  position: fixed;
+  left: 7%;
+  top: 31%;
+  width: 28%;
+  z-index: 5;
+  color: #e4e4e4;
+  pointer-events: none;
+}
+.previs-copy p {
+  font: 11px/1.5 sans-serif;
+  letter-spacing: 0.16em;
+  margin-bottom: 24px;
+}
+.previs-copy h1 {
+  font: 500 clamp(28px, 3.3vw, 56px)/1.08 sans-serif;
+  letter-spacing: -0.045em;
+}
+.previs-copy small {
+  display: block;
+  margin-top: 26px;
+  color: #aaa;
+  font: 11px sans-serif;
+}
+.previs-copy--closing {
+  top: 19%;
+  width: 38%;
+}
+.previs-controls {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 96vw;
+  padding: 12px 16px;
+  z-index: 100;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  background: #191919;
+  color: #ddd;
+  font: 11px sans-serif;
+  border: 1px solid #555;
+  border-radius: 7px;
+}
+.previs-controls label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.previs-controls select {
+  max-width: 290px;
+  color: #fff;
+  background: #303030;
+  padding: 7px;
+}
+.previs-controls input {
+  accent-color: #aaa;
+}
+.previs-guides {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 33.2%,
+      #ffffff30 33.3%,
+      transparent 33.4%,
+      transparent 66.5%,
+      #ffffff30 66.6%,
+      transparent 66.7%
+    ),
+    linear-gradient(
+      transparent 33.2%,
+      #ffffff30 33.3%,
+      transparent 33.4%,
+      transparent 66.5%,
+      #ffffff30 66.6%,
+      transparent 66.7%
+    );
+}
+.previs-guides span {
+  position: absolute;
+  left: 7%;
+  top: 25%;
+  font: 10px sans-serif;
+  color: #999;
+}
+@media (max-width: 700px) {
+  .previs-copy {
+    top: 14%;
+    width: 78%;
+  }
+  .previs-controls {
+    flex-wrap: wrap;
+    width: 94vw;
+    gap: 9px;
+  }
+  .previs-controls select {
+    max-width: 230px;
+  }
+  .previs-controls input[type='range'] {
+    width: 100px;
+  }
+}

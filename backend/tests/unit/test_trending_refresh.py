@@ -71,7 +71,7 @@ def test_writes_trending_item_on_success(ddb_table, monkeypatch):
     assert len(item["games"]) == 5
     assert item["games"][0]["slug"] == "trending-game-0"
     assert "updated_at" in item
-    assert "ttl" in item
+    assert "ttl" not in item  # B8: trending must never expire on its own
 
 
 # ---------------------------------------------------------------------------
@@ -134,30 +134,35 @@ def test_does_not_overwrite_on_network_error(ddb_table, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# (d) TTL is set roughly 26 hours in the future
+# (d) B8 regression: the trending item never carries a TTL, and a successful
+#     refresh clears a TTL left behind by older deployments.
 # ---------------------------------------------------------------------------
 
-def test_ttl_is_26h_from_write(ddb_table, monkeypatch):
+def test_refresh_removes_legacy_ttl(ddb_table, monkeypatch):
+    # An item written by the old code: TTL already in the past.
+    db_module.put_trending_daily(
+        games=[{"name": "Old", "slug": "old"}],
+        updated_at="2026-09-01T03:00:00Z",
+        ttl=int(time.time()) - 60,
+    )
     mock_resp = MagicMock()
     mock_resp.ok = True
     mock_resp.json.return_value = _rawg_trending_payload(count=3)
 
-    before = int(time.time())
     with patch.object(refresh_module.requests, "get", return_value=mock_resp):
         monkeypatch.setattr(refresh_module, "fetch_metadata", MagicMock(return_value={
             "game_exe": "dummy.exe", "resolution_failed": False,
         }))
         refresh_module.handler({}, None)
-    after = int(time.time())
 
     item = db_module.get_trending_daily()
-    ttl = int(item["ttl"])
-    expected_low = before + 26 * 3600
-    expected_high = after + 26 * 3600
+    assert "ttl" not in item
+    assert len(item["games"]) == 3
 
-    assert expected_low <= ttl <= expected_high, (
-        f"TTL {ttl} not in [{expected_low}, {expected_high}]"
-    )
+
+def test_put_trending_daily_defaults_to_no_ttl(ddb_table):
+    db_module.put_trending_daily(games=[], updated_at="2026-10-04T03:00:00Z")
+    assert "ttl" not in db_module.get_trending_daily()
 
 
 # ---------------------------------------------------------------------------
@@ -206,3 +211,47 @@ def test_trending_failure_does_not_abort_cron(ddb_table, monkeypatch):
     assert "new" in result
     assert "refreshed" in result
     assert "failed" in result
+
+
+# ---------------------------------------------------------------------------
+# Steam most-played chart is the primary source when a Steam key is set
+# ---------------------------------------------------------------------------
+
+def _steam_get(url, params=None, timeout=None):
+    if "GetMostPlayedGames" in url:
+        return MagicMock(ok=True, json=lambda: {"response": {"ranks": [
+            {"rank": 1, "appid": 730, "last_week_rank": 1, "peak_in_game": 1293425},
+            {"rank": 2, "appid": 431960, "last_week_rank": 3, "peak_in_game": 90000},  # a tool typed as game
+            {"rank": 3, "appid": 570, "last_week_rank": 2, "peak_in_game": 895069},
+        ]}})
+    appid = str(params["appids"])
+    data = {"730": {"type": "game", "name": "Counter-Strike 2", "genres": [{"description": "Action"}]},
+            "431960": {"type": "game", "name": "Wallpaper Engine",
+                       "genres": [{"description": "Casual"}, {"description": "Utilities"}]},
+            "570": {"type": "game", "name": "Dota 2", "genres": [{"description": "Strategy"}]}}[appid]
+    return MagicMock(ok=True, json=lambda: {appid: {"success": True, "data": data}})
+
+
+def test_trending_uses_steam_most_played(ddb_table, monkeypatch):
+    import shared.steam_api as steam_api
+    monkeypatch.setenv("STEAM_API_KEY", "k")
+    monkeypatch.setattr(steam_api.requests, "get", _steam_get)
+    refresh_module.handler({"trending_only": True}, None)
+    item = db_module.get_trending_daily()
+    assert item["source"] == "steam"
+    assert [g["name"] for g in item["games"]] == ["Counter-Strike 2", "Dota 2"]  # tool skipped
+    cs = item["games"][0]
+    assert cs["rank"] == 1 and cs["peak_players"] == 1293425
+    assert cs["background_image"].endswith("/730/capsule_616x353.jpg")
+
+
+def test_trending_falls_back_to_rawg_when_steam_fails(ddb_table, monkeypatch):
+    import shared.steam_api as steam_api
+    monkeypatch.setenv("STEAM_API_KEY", "k")
+    monkeypatch.setattr(steam_api.requests, "get", MagicMock(return_value=MagicMock(ok=False, status_code=503)))
+    mock_resp = MagicMock(ok=True)
+    mock_resp.json.return_value = _rawg_trending_payload(count=3)
+    with patch.object(refresh_module.requests, "get", return_value=mock_resp):
+        refresh_module.handler({"trending_only": True}, None)
+    item = db_module.get_trending_daily()
+    assert item["source"] == "rawg" and len(item["games"]) == 3

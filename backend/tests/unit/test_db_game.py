@@ -112,7 +112,7 @@ def _session(exe: str, started_at: int, session_id: str = "s1") -> Session:
 
 def test_iter_recent_session_exes_empty(ddb_table):
     result = db_module.iter_recent_session_exes(0)
-    assert result == set()
+    assert result == {}
 
 
 def test_iter_recent_session_exes_finds_recent(ddb_table):
