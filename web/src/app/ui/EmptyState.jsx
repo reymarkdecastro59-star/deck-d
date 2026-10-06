@@ -15,9 +15,11 @@ export function EmptyState({ icon, title, description, action, className }) {
       )}
     >
       {icon && <div className="mb-4 text-[var(--app-fg-dim)]">{icon}</div>}
-      <h3 className="text-[17px] font-medium tracking-tight text-[var(--app-fg)]">{title}</h3>
+      <h3 className="text-[18px] font-semibold tracking-[-0.01em] text-[var(--app-fg-strong)]">
+        {title}
+      </h3>
       {description && (
-        <p className="mt-2 max-w-[420px] text-[13.5px] leading-relaxed text-[var(--app-fg-muted)]">
+        <p className="app-wt-small mt-2 max-w-[460px] text-[15px] leading-[1.55] text-[var(--app-fg-muted)]">
           {description}
         </p>
       )}

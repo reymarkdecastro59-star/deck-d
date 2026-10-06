@@ -1,29 +1,26 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { MoreHorizontal, Trash2 } from 'lucide-react'
+import { Art } from '@/app/ui/Art'
 import { Button } from '@/app/ui/Button'
 import { IconButton } from '@/app/ui/IconButton'
 import { Select } from '@/app/ui/Select'
-import { getLabelColor } from '@/app/design/tokens'
 import { formatDate, formatDuration } from '@/lib/format'
 import { LABELS, labelTitle } from './labels'
 
 const SELECT_OPTIONS = LABELS.map((l) => ({ value: l.value, label: l.title }))
 
 /**
- * Chronological session row. No card, no table — a compact list item that
- * lines up on a grid: label dot, game name + start-time secondary, right-
- * aligned duration, and an actions column that stays hidden until pointer-
- * hover or focus. Touch users get the same actions via the always-visible
- * ellipsis on md-. Label change and delete are the only per-row actions;
- * everything else lives in Session Detail (future).
+ * Session row (UX v2 §5.5): a 32px thumb in the game's identity colour (the
+ * same colour as its timeline block), a 15px title, a plain-language time
+ * line, then the duration readout. The actions button is always visible
+ * (dimmed until hover/focus) so touch users can reach it.
  */
-function SessionItemImpl({ session, onPatch, onDelete, onError }) {
+function SessionItemImpl({ session, onPatch, onDelete, onError, timeOnly = false }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const rootRef = useRef(null)
   const timerRef = useRef(null)
-  const color = getLabelColor(session.label)
 
   useEffect(() => {
     if (!confirming) return
@@ -75,31 +72,31 @@ function SessionItemImpl({ session, onPatch, onDelete, onError }) {
   return (
     <li
       ref={rootRef}
-      className="group relative grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 border-t border-[var(--app-hairline)] py-3 first:border-t-0"
+      className="group relative grid grid-cols-[auto_1fr_auto] items-center gap-x-4 border-t border-[var(--app-hairline)] py-3 first:border-t-0"
     >
-      <span
-        aria-hidden
-        className="mt-2 h-1.5 w-1.5 shrink-0 self-start rounded-full"
-        style={{ background: color }}
-      />
+      <Art name={session.game_name} className="h-[43px] w-8 shrink-0 rounded-[3px]" />
 
       <div className="min-w-0">
-        <div className="truncate text-[14px] text-[var(--app-fg)]">{session.game_name}</div>
-        <div className="app-num mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11.5px] text-[var(--app-fg-dim)]">
-          <span>{formatDate(session.started_at, 'time')}</span>
+        <div className="truncate text-[15px] font-semibold text-[var(--app-fg-strong)]">
+          {session.game_name}
+        </div>
+        <div className="app-wt-small mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-[var(--app-fg-muted)]">
+          {/* Inside a day group the panel already names the day. */}
+          <span>
+            {timeOnly
+              ? new Date(session.started_at * 1000).toLocaleTimeString(undefined, {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })
+              : formatDate(session.started_at, 'time')}
+          </span>
           <span aria-hidden>·</span>
-          <span className="capitalize">{labelTitle(session.label)}</span>
-          {session.game_exe && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="truncate">{session.game_exe}</span>
-            </>
-          )}
+          <span>{labelTitle(session.label)}</span>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="app-num text-[14px] text-[var(--app-fg-strong)]">
+        <span className="app-num text-[15px] text-[var(--app-fg-strong)]">
           {formatDuration(session.duration_sec)}
         </span>
 
@@ -129,7 +126,7 @@ function SessionItemImpl({ session, onPatch, onDelete, onError }) {
                 style={{ boxShadow: 'var(--app-elev-pop)' }}
               >
                 <div className="px-2 pb-2 pt-1">
-                  <div className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">Label</div>
+                  <div className="text-[13px] font-medium text-[var(--app-fg-muted)]">Label</div>
                   <div className="mt-1.5">
                     <Select
                       size="sm"
@@ -147,7 +144,7 @@ function SessionItemImpl({ session, onPatch, onDelete, onError }) {
                     type="button"
                     role="menuitem"
                     onClick={handleDelete}
-                    className="flex w-full items-center gap-2 rounded-[var(--app-r-2)] px-2 py-1.5 text-left text-[13px] text-[var(--app-danger)] transition-colors hover:bg-[var(--app-danger-tint)]"
+                    className="flex w-full items-center gap-2 rounded-[var(--app-r-2)] px-2 py-2 text-left text-[14px] text-[var(--app-danger)] transition-colors hover:bg-[var(--app-danger-tint)]"
                   >
                     <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
                     Delete session

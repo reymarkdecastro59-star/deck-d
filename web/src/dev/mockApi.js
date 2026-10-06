@@ -69,18 +69,61 @@ const GAMES = [
   ['Celeste', 14.2, 0.1, 7],
 ]
 
+// Sample trending list (the real one is RAWG's daily list).
+const TRENDING = [
+  ['Hollow Knight: Silksong', ['Action', 'Platformer'], 91],
+  ['Hades II', ['Action', 'Roguelike'], 94],
+  ['Blue Prince', ['Puzzle', 'Strategy'], 92],
+  ['Clair Obscur: Expedition 33', ['RPG'], 93],
+  ['Ball x Pit', ['Action', 'Indie'], null],
+  ['Megabonk', ['Action', 'Roguelike'], null],
+  ['Dispatch', ['Adventure'], 84],
+  ['Hades', ['Action', 'Roguelike'], 93],
+].map(([name, genres, metacritic], i) => ({
+  rawg_id: 800000 + i,
+  rank: i + 1,
+  chart_rank: i + 1,
+  last_week_rank: [1, 3, 2, null, 5, 9, 7, 6][i],
+  peak_players: [1293425, 895069, 412000, 210500, 98000, 87000, 61000, 45000][i],
+  name,
+  slug: name.toLowerCase().replace(/\W+/g, '-'),
+  background_image: null,
+  genres,
+  metacritic,
+}))
+
+// One game known only from a Steam import (no tracked sessions yet).
+const IMPORTED_ONLY = {
+  game: 'Stardew Valley',
+  rawg_id: null,
+  slug: null,
+  background_image: null,
+  total_hours: 61.2,
+  tracked_hours: 0,
+  imported_hours: 61.2,
+  imported_from: ['Steam'],
+  decay_hours: 0,
+}
+
 const ROUTES = {
   '/dashboard': () => ({
     total_sessions: sessions().length,
     total_hours: 323.0,
-    games: GAMES.map(([game, total, decay, id]) => ({
-      game,
-      rawg_id: 900000 + id,
-      slug: game.toLowerCase().replace(/\W+/g, '-'),
-      background_image: null,
-      total_hours: total,
-      decay_hours: decay,
-    })),
+    tracked_hours: 323.0,
+    imported_hours: 61.2,
+    games: [
+      ...GAMES.map(([game, total, decay, id]) => ({
+        game,
+        rawg_id: 900000 + id,
+        slug: game.toLowerCase().replace(/\W+/g, '-'),
+        background_image: null,
+        total_hours: total,
+        tracked_hours: game === 'Hades II' ? 3.6 : total,
+        ...(game === 'Hades II' ? { imported_hours: 42.1, imported_from: ['Steam'] } : {}),
+        decay_hours: decay,
+      })),
+      IMPORTED_ONLY,
+    ],
   }),
   '/sessions': () => ({ sessions: sessions() }),
   '/devices': () => ({
@@ -90,7 +133,7 @@ const ROUTES = {
     ],
   }),
   '/recommendations': () => ({
-    trending: [],
+    trending: TRENDING,
     genre_based: null,
     top_picks: [
       {
@@ -103,6 +146,19 @@ const ROUTES = {
       },
     ],
   }),
+  '/imports': () => ({
+    imports: [
+      {
+        source: 'steam',
+        count: 22,
+        total_hours: 158.5,
+        imported_at: now() - 3 * H,
+        account_label: 'Player',
+      },
+    ],
+    requested_at: null,
+  }),
+  '/steam': () => ({ configured: true, link: null }),
   '/notifications': () => ({ notifications: [] }),
   '/profile': () => ({ profile: { email: 'player@example.com' } }),
   '/presence': () => ({

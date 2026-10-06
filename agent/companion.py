@@ -15,6 +15,7 @@ import webbrowser
 import auth
 import autostart
 import games
+import importer
 import notifications
 import session
 import sync
@@ -127,6 +128,18 @@ class Bridge:
 
     def open_signup(self) -> None:
         webbrowser.open(f"{WEB_URL}/signup")
+
+    # -- launcher import -----------------------------------------------
+    def get_import_status(self) -> dict:
+        return importer.status()
+
+    def set_import_account(self, account_id: str) -> dict:
+        importer.set_steam_account(str(account_id))
+        return importer.status()
+
+    def start_import(self) -> dict:
+        importer.run_in_background()
+        return importer.status() | {"running": True}
 
     def hide(self) -> None:
         self._on_hide()

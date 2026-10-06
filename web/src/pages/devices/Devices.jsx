@@ -4,7 +4,8 @@ import { Button } from '@/app/ui/Button'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { IconButton } from '@/app/ui/IconButton'
-import { SectionHead } from '@/app/ui/SectionHead'
+import { PageFrame, PageHeader } from '@/app/ui/PageHeader'
+import { Panel, PanelHead } from '@/app/ui/Panel'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useToast } from '@/app/hooks/useToast'
 import { useDevices } from './useDevices'
@@ -14,9 +15,8 @@ const AGENT_DOWNLOAD_URL = '/downloads/deckd.exe'
 const REVOKED_PANEL_ID = 'devices-revoked-panel'
 
 /**
- * Devices — a utility screen. Compact toolbar, table on the page (no card
- * wrapper), quiet paragraph notes at the bottom. The brief says devices
- * doesn't need cinematic treatment; the composition matches.
+ * Devices — a utility screen: title + actions, the device table in a panel,
+ * revoked devices behind a disclosure, and a short "how it works" panel.
  */
 export default function Devices() {
   const { devices, loading, error, reload, rename, revoke } = useDevices()
@@ -27,48 +27,33 @@ export default function Devices() {
   const revoked = useMemo(() => devices.filter((d) => d.revoked_at), [devices])
 
   return (
-    <div
-      className="mx-auto w-full px-6 py-8 lg:px-10"
-      style={{ maxWidth: 'var(--app-content-max)' }}
-    >
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <div className="flex items-baseline gap-3">
-          <h1
-            className="font-normal tracking-tight text-[var(--app-fg-strong)]"
-            style={{ fontSize: 'clamp(20px, 1.8vw, 26px)' }}
-          >
-            Devices
-          </h1>
-          <span className="app-num text-[13px] text-[var(--app-fg-dim)]">
-            {loading ? '' : active.length.toLocaleString()}
-          </span>
-        </div>
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
-          <Button
-            as="a"
-            href={AGENT_DOWNLOAD_URL}
-            download="deckd.exe"
-            variant="secondary"
-            size="sm"
-            leadingIcon={<Download className="h-4 w-4" />}
-          >
-            Download tracker
-          </Button>
-          {!loading && devices.length > 0 && (
-            <IconButton size="sm" label="Reload devices" onClick={reload}>
-              <RefreshCw />
-            </IconButton>
-          )}
-        </div>
-      </div>
+    <PageFrame>
+      <PageHeader
+        title="Devices"
+        count={loading ? null : active.length}
+        countLabel={active.length === 1 ? 'device' : 'devices'}
+        lede="The PCs running the DECK'D tracker for your account."
+        actions={
+          <>
+            <Button
+              as="a"
+              href={AGENT_DOWNLOAD_URL}
+              download="deckd.exe"
+              variant="secondary"
+              leadingIcon={<Download className="h-4 w-4" />}
+            >
+              Download tracker
+            </Button>
+            {!loading && devices.length > 0 && (
+              <IconButton label="Reload devices" onClick={reload}>
+                <RefreshCw />
+              </IconButton>
+            )}
+          </>
+        }
+      />
 
-      <p className="mt-3 max-w-[640px] text-[13px] leading-relaxed text-[var(--app-fg-muted)]">
-        Every install of the DECK&apos;D tray agent registers on first sync. Rename them so you can
-        tell your desktop from your handheld. Revoking cuts a device off on its next sync attempt —
-        historic sessions from that machine stay in your account.
-      </p>
-
-      <div className="mt-8">
+      <div>
         {loading && <DevicesSkeleton />}
 
         {error && (
@@ -95,41 +80,44 @@ export default function Devices() {
         )}
 
         {!loading && !error && active.length > 0 && (
-          <section>
-            <SectionHead
-              eyebrow="Active"
-              title={`${active.length.toLocaleString()} device${active.length === 1 ? '' : 's'} syncing`}
+          <Panel aria-labelledby="dv-active">
+            <PanelHead
+              id="dv-active"
+              title="Connected"
+              description="Rename a device so you can tell your desktop from your handheld"
             />
-            <table className="mt-3 w-full">
-              <thead>
-                <tr className="text-left text-[10.5px] uppercase tracking-[0.16em] text-[var(--app-fg-dim)]">
-                  <th className="border-b border-[var(--app-hairline)] pb-2 pl-0 pr-4 font-medium">
-                    Name
-                  </th>
-                  <th className="border-b border-[var(--app-hairline)] pb-2 pr-4 font-medium">
-                    First seen
-                  </th>
-                  <th className="border-b border-[var(--app-hairline)] pb-2 pr-4 font-medium">
-                    Last seen
-                  </th>
-                  <th className="border-b border-[var(--app-hairline)] pb-2 pr-0 text-right font-medium">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {active.map((d) => (
-                  <DeviceRow
-                    key={d.device_id}
-                    device={d}
-                    onRename={rename}
-                    onRevoke={revoke}
-                    onError={showToast}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </section>
+            <div className="-mx-4 overflow-x-auto">
+              <table className="w-full min-w-[560px]">
+                <thead>
+                  <tr className="app-wt-small text-left text-[13px] text-[var(--app-fg-muted)]">
+                    <th className="border-b border-[var(--app-hairline)] pb-2.5 pl-4 pr-4 font-medium">
+                      Name
+                    </th>
+                    <th className="border-b border-[var(--app-hairline)] px-4 pb-2.5 font-medium">
+                      First seen
+                    </th>
+                    <th className="border-b border-[var(--app-hairline)] px-4 pb-2.5 font-medium">
+                      Last seen
+                    </th>
+                    <th className="border-b border-[var(--app-hairline)] px-4 pb-2.5 text-right font-medium">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {active.map((d) => (
+                    <DeviceRow
+                      key={d.device_id}
+                      device={d}
+                      onRename={rename}
+                      onRevoke={revoke}
+                      onError={showToast}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
         )}
 
         {!loading && !error && revoked.length > 0 && (
@@ -139,24 +127,24 @@ export default function Devices() {
               aria-expanded={showRevoked}
               aria-controls={REVOKED_PANEL_ID}
               onClick={() => setShowRevoked((v) => !v)}
-              className="app-eyebrow inline-flex items-center gap-2 text-[10px] text-[var(--app-fg-muted)] transition-colors hover:text-[var(--app-fg)]"
+              className="inline-flex h-10 items-center gap-2 rounded-[var(--app-r-2)] text-[15px] font-semibold text-[var(--app-fg)] transition-colors hover:text-[var(--app-fg-strong)]"
             >
-              <span>Revoked ({revoked.length})</span>
-              <span aria-hidden className="text-[10px]">
+              <span aria-hidden className="text-[13px] text-[var(--app-fg-muted)]">
                 {showRevoked ? '▾' : '▸'}
               </span>
+              <span>Revoked devices ({revoked.length})</span>
             </button>
             {showRevoked && (
               <table id={REVOKED_PANEL_ID} className="mt-3 w-full">
                 <thead>
-                  <tr className="text-left text-[10.5px] uppercase tracking-[0.16em] text-[var(--app-fg-dim)]">
-                    <th className="border-b border-[var(--app-hairline)] pb-2 pl-0 pr-4 font-medium">
+                  <tr className="app-wt-small text-left text-[13px] text-[var(--app-fg-muted)]">
+                    <th className="border-b border-[var(--app-hairline)] pb-2.5 pl-4 pr-4 font-medium">
                       Name
                     </th>
-                    <th className="border-b border-[var(--app-hairline)] pb-2 pr-4 font-medium">
+                    <th className="border-b border-[var(--app-hairline)] px-4 pb-2.5 font-medium">
                       First seen
                     </th>
-                    <th className="border-b border-[var(--app-hairline)] pb-2 pr-0 font-medium">
+                    <th className="border-b border-[var(--app-hairline)] px-4 pb-2.5 font-medium">
                       Revoked
                     </th>
                   </tr>
@@ -173,36 +161,38 @@ export default function Devices() {
       </div>
 
       {!loading && !error && (
-        <div className="mt-12 border-t border-[var(--app-hairline)] pt-6">
+        <Panel aria-labelledby="dv-how" className="mt-6">
+          <PanelHead id="dv-how" title="How devices work" />
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
-              <div className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">Pairing</div>
-              <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--app-fg-muted)]">
-                No codes to type. The tray agent signs you in through your account, generates a
-                device ID on that machine, and registers it here on the first sync. Rename it to
-                anything — the ID underneath stays the same.
+              <h3 className="text-[15px] font-semibold text-[var(--app-fg-strong)]">Adding a PC</h3>
+              <p className="app-wt-small mt-1.5 text-[15px] leading-[1.55] text-[var(--app-fg-muted)]">
+                Install the tracker and sign in. The PC appears here after it checks in, usually
+                within a minute. There are no codes to type.
               </p>
             </div>
             <div>
-              <div className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">Revoking</div>
-              <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--app-fg-muted)]">
-                A revoked device is remembered so the same install can&apos;t silently re-register —
-                its next sync is rejected. Historic sessions from that device stay in your account.
+              <h3 className="text-[15px] font-semibold text-[var(--app-fg-strong)]">
+                Removing a PC
+              </h3>
+              <p className="app-wt-small mt-1.5 text-[15px] leading-[1.55] text-[var(--app-fg-muted)]">
+                Revoking stops that PC from syncing. Sessions it already recorded stay in your
+                account.
               </p>
             </div>
           </div>
-        </div>
+        </Panel>
       )}
 
       {toast && (
         <div
           role="alert"
-          className="fixed bottom-6 right-6 z-50 max-w-[380px] rounded-[var(--app-r-3)] border border-[var(--app-danger)] bg-[var(--app-danger-tint)] px-4 py-3 text-[13px] text-[var(--app-fg)]"
+          className="fixed bottom-6 right-6 z-50 max-w-[380px] rounded-[var(--app-r-3)] border border-[var(--app-danger)] bg-[var(--app-danger-tint)] px-4 py-3 text-[14px] text-[var(--app-fg)]"
         >
           {toast}
         </div>
       )}
-    </div>
+    </PageFrame>
   )
 }
 

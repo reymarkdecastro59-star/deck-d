@@ -80,7 +80,7 @@
   /* ── layout ───────────────────────────────────────────────── */
   --app-sidebar-w: 248px;
   --app-topbar-h: 64px;
-  --app-content-max: 1440px;
+  --app-content-max: 1600px;
   --app-gutter: 40px;
 
   /* ── elevation (mostly hairlines, minimal shadow) ─────────── */

@@ -206,7 +206,28 @@ def send_heartbeat() -> bool:
     if resp.status_code != 200:
         print(f"[deckd] heartbeat returned HTTP {resp.status_code}", file=sys.stderr)
         return False
+    global _import_requested_at, _steam_link
+    try:
+        body = resp.json() or {}
+    except ValueError:
+        body = {}
+    _import_requested_at = body.get("import_requested_at")
+    _steam_link = body.get("steam") if isinstance(body.get("steam"), dict) else None
     return True
+
+
+# Set by the latest heartbeat: when the web asked this PC to re-import, and
+# the Steam account the user connected on the web ({account_id, api_ok}).
+_import_requested_at = None
+_steam_link = None
+
+
+def import_requested_at():
+    return _import_requested_at
+
+
+def steam_link():
+    return _steam_link
 
 
 def _log_terminal(status_code: int, user_id: str, device_id: str) -> None:

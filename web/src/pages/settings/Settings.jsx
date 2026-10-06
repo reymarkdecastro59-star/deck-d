@@ -13,7 +13,11 @@ import { Button } from '@/app/ui/Button'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { Input } from '@/app/ui/Input'
 import { Kbd } from '@/app/ui/Kbd'
+import { PageFrame, PageHeader } from '@/app/ui/PageHeader'
+import { Panel } from '@/app/ui/Panel'
 import { SectionHead } from '@/app/ui/SectionHead'
+import { SegmentedControl } from '@/app/ui/SegmentedControl'
+import { getStoredMotion, getStoredTheme, setMotion, setTheme } from '@/app/design/theme'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { useAuth } from '@/auth/AuthContext'
 import { deleteProfile } from '@/api/profile'
@@ -21,6 +25,7 @@ import { downloadExport } from '@/api/export'
 import { resetOnboarding } from '@/app/onboarding/state'
 import { formatDate } from '@/lib/format'
 import { useProfile } from './useProfile'
+import { ImportRows } from './ImportRows'
 
 const APP_VERSION = '0.1.0'
 const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL
@@ -32,16 +37,15 @@ const DOCS_URL = 'https://github.com/reymarkdecastro59-star/deck-d'
 const NAV = [
   { id: 'account', label: 'Account' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'imports', label: 'Steam import' },
   { id: 'data', label: 'Data & privacy' },
   { id: 'help', label: 'Help' },
 ]
 
 /**
- * Settings — sub-nav + content pane on desktop, a single stacked scroll
- * on mobile. Every "section" is just an <section id=…> with a SectionHead
- * and a bare form-rhythm inside. No icon-in-square headers, no card
- * wrappers per preference. Related controls sit close, unrelated ones
- * are separated by hairlines and section breaks.
+ * Settings — sub-nav + content on desktop, one stacked scroll on phone.
+ * Each section is a panel (common region) with a section title and rows:
+ * a 15px label, its value or one-line hint, and the control on the right.
  */
 export default function Settings() {
   const { email, logout } = useAuth()
@@ -68,9 +72,10 @@ export default function Settings() {
   if (loading) return <SettingsSkeleton />
   if (error) {
     return (
-      <div className="mx-auto max-w-[880px] px-6 py-8 lg:px-10">
+      <PageFrame>
+        <PageHeader title="Settings" />
         <ErrorState title="We couldn't load your settings" description={error} onRetry={reload} />
-      </div>
+      </PageFrame>
     )
   }
 
@@ -79,15 +84,10 @@ export default function Settings() {
   }
 
   return (
-    <div className="mx-auto w-full px-6 py-8 lg:px-10" style={{ maxWidth: '1100px' }}>
-      <h1
-        className="font-normal tracking-tight text-[var(--app-fg-strong)]"
-        style={{ fontSize: 'clamp(20px, 1.8vw, 26px)' }}
-      >
-        Settings
-      </h1>
+    <PageFrame>
+      <PageHeader title="Settings" lede="Your account, how DECK'D looks, and your data." />
 
-      <div className="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-[180px_1fr] lg:gap-16">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[200px_minmax(0,880px)] lg:gap-12">
         <aside className="hidden lg:block">
           <nav className="sticky top-6 space-y-0.5" aria-label="Settings sections">
             {NAV.map((item) => (
@@ -95,10 +95,11 @@ export default function Settings() {
                 key={item.id}
                 href={`#${item.id}`}
                 onClick={() => setActiveId(item.id)}
+                aria-current={activeId === item.id ? 'true' : undefined}
                 className={
                   activeId === item.id
-                    ? 'block border-l-2 border-[var(--app-accent)] py-1.5 pl-3 text-[13px] text-[var(--app-fg-strong)]'
-                    : 'block border-l-2 border-transparent py-1.5 pl-3 text-[13px] text-[var(--app-fg-dim)] transition-colors hover:text-[var(--app-fg)]'
+                    ? 'flex h-10 items-center rounded-[var(--app-r-2)] bg-[var(--app-accent-tint)] px-3 text-[15px] font-semibold text-[var(--app-fg-strong)] shadow-[inset_2px_0_0_var(--app-accent)]'
+                    : 'app-wt-small flex h-10 items-center rounded-[var(--app-r-2)] px-3 text-[15px] text-[var(--app-fg-muted)] transition-colors hover:bg-[var(--app-bg-3)] hover:text-[var(--app-fg)]'
                 }
               >
                 {item.label}
@@ -107,16 +108,15 @@ export default function Settings() {
           </nav>
         </aside>
 
-        <div className="min-w-0 space-y-14">
-          <section id="account" ref={registerSection('account')} className="scroll-mt-8">
-            <SectionHead eyebrow="Account" title="Signed in through Cognito" />
-            <div className="mt-5 divide-y divide-[var(--app-hairline)]">
+        <div className="min-w-0 space-y-6">
+          <Section id="account" register={registerSection} title="Account">
+            <div className="divide-y divide-[var(--app-hairline)]">
               <Row label="Email" value={email || profile?.email || '—'} />
               <Row label="Member since" value={formatDate(profile?.created_at, 'long')} />
               <Row
                 label="Session"
-                value="Signed in on this device."
-                hint="Sign out clears your token locally. Your data stays on the server."
+                value="Signed in on this device"
+                hint="Signing out doesn't delete anything. Your data stays in your account."
                 action={
                   <Button
                     variant="secondary"
@@ -128,27 +128,32 @@ export default function Settings() {
                 }
               />
             </div>
-          </section>
+          </Section>
 
-          <section id="appearance" ref={registerSection('appearance')} className="scroll-mt-8">
-            <SectionHead eyebrow="Appearance" title="Theme" />
-            <div className="mt-5 divide-y divide-[var(--app-hairline)]">
-              <Row
-                label="Theme"
-                value="Dark"
-                hint="Light mode is coming — we're waiting until we can do it well rather than shipping washed-out screens."
-              />
-            </div>
-          </section>
+          <Section id="appearance" register={registerSection} title="Appearance">
+            <AppearanceRows />
+          </Section>
 
-          <section id="data" ref={registerSection('data')} className="scroll-mt-8">
-            <SectionHead eyebrow="Data & privacy" title="Take your data, or erase it entirely" />
+          <Section
+            id="imports"
+            register={registerSection}
+            title="Steam import"
+            description="Playtime Steam recorded before DECK'D"
+          >
+            <ImportRows Row={Row} />
+          </Section>
+
+          <Section
+            id="data"
+            register={registerSection}
+            title="Data & privacy"
+            description="Take your data with you, or erase it entirely"
+          >
             <DataPrivacyRows onDeleted={logout} />
-          </section>
+          </Section>
 
-          <section id="help" ref={registerSection('help')} className="scroll-mt-8">
-            <SectionHead eyebrow="Help" title="About and support" />
-            <div className="mt-5 divide-y divide-[var(--app-hairline)]">
+          <Section id="help" register={registerSection} title="Help">
+            <div className="divide-y divide-[var(--app-hairline)]">
               <Row
                 label="Keyboard shortcuts"
                 value={
@@ -161,15 +166,13 @@ export default function Settings() {
                   </span>
                 }
               />
-              <Row
-                label="Contact"
-                hint={
-                  CONTACT_URL
-                    ? 'Bug reports, feedback, or help — we read every message.'
-                    : 'Set VITE_CONTACT_EMAIL in web/.env.local to enable the contact link.'
-                }
-                action={
-                  CONTACT_URL ? (
+              {/* Only shown when a contact address is configured — users never
+                  see setup instructions meant for the developer. */}
+              {CONTACT_URL && (
+                <Row
+                  label="Contact"
+                  hint="Bug reports, feedback or help. Every message is read."
+                  action={
                     <Button
                       as="a"
                       href={CONTACT_URL}
@@ -178,16 +181,12 @@ export default function Settings() {
                     >
                       Send a message
                     </Button>
-                  ) : (
-                    <Button variant="secondary" disabled>
-                      Contact unavailable
-                    </Button>
-                  )
-                }
-              />
+                  }
+                />
+              )}
               <Row
                 label="Documentation"
-                hint="Source, install notes, and roadmap on GitHub."
+                hint="Install notes and the roadmap, on GitHub."
                 action={
                   <Button
                     as="a"
@@ -203,7 +202,7 @@ export default function Settings() {
               />
               <Row
                 label="Legal"
-                hint="Terms and privacy — the honest, hobby-scale version."
+                hint="The terms of use and how your data is handled."
                 action={
                   <div className="flex flex-wrap gap-2">
                     <Button as={Link} to="/legal/terms" size="sm" variant="secondary">
@@ -221,33 +220,96 @@ export default function Settings() {
                 tone="muted"
               />
             </div>
-          </section>
+          </Section>
         </div>
       </div>
+    </PageFrame>
+  )
+}
+
+function Section({ id, register, title, description, children }) {
+  return (
+    <section id={id} ref={register(id)} aria-labelledby={`${id}-title`} className="scroll-mt-24">
+      <Panel as="div" className="py-3 sm:py-4">
+        <SectionHead
+          id={`${id}-title`}
+          title={title}
+          description={description}
+          className="mb-1 pt-2"
+        />
+        {children}
+      </Panel>
+    </section>
+  )
+}
+
+const THEME_OPTIONS = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+]
+const MOTION_OPTIONS = [
+  { value: 'auto', label: 'System' },
+  { value: 'reduced', label: 'Reduced' },
+]
+
+function AppearanceRows() {
+  const [theme, setThemeState] = useState(getStoredTheme)
+  const [motion, setMotionState] = useState(getStoredMotion)
+  return (
+    <div className="divide-y divide-[var(--app-hairline)]">
+      <Row
+        label="Theme"
+        hint="System follows your device's light or dark setting."
+        action={
+          <SegmentedControl
+            items={THEME_OPTIONS}
+            value={theme}
+            ariaLabel="Theme"
+            onChange={(v) => {
+              setTheme(v)
+              setThemeState(v)
+            }}
+          />
+        }
+      />
+      <Row
+        label="Motion"
+        hint="Reduced turns off hover lifts and animated transitions."
+        action={
+          <SegmentedControl
+            items={MOTION_OPTIONS}
+            value={motion}
+            ariaLabel="Motion"
+            onChange={(v) => {
+              setMotion(v)
+              setMotionState(v)
+            }}
+          />
+        }
+      />
     </div>
   )
 }
 
 function Row({ label, value, action, hint, tone = 'default' }) {
   return (
-    <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       <div className="min-w-0">
-        <div className="text-[12.5px] uppercase tracking-[0.14em] text-[var(--app-fg-dim)]">
-          {label}
-        </div>
+        <div className="text-[15px] font-semibold text-[var(--app-fg-strong)]">{label}</div>
         {value && (
           <div
             className={
               tone === 'muted'
-                ? 'mt-1 text-[13.5px] text-[var(--app-fg-muted)]'
-                : 'mt-1 text-[13.5px] text-[var(--app-fg)]'
+                ? 'app-wt-small mt-1 text-[15px] text-[var(--app-fg-muted)]'
+                : 'mt-1 text-[15px] text-[var(--app-fg)]'
             }
           >
             {value}
           </div>
         )}
         {hint && (
-          <div className="mt-1 max-w-[520px] text-[12px] leading-relaxed text-[var(--app-fg-muted)]">
+          <div className="app-wt-small mt-1 max-w-[560px] text-[14px] leading-[1.5] text-[var(--app-fg-muted)]">
             {hint}
           </div>
         )}
@@ -282,15 +344,15 @@ function DataPrivacyRows({ onDeleted }) {
     resetOnboarding()
     setResetting(true)
     setMessageTone('info')
-    setMessage('Onboarding reset. Your next visit will start from the consent screen.')
+    setMessage('Done. The welcome steps will show on your next visit.')
     setTimeout(() => setResetting(false), 1200)
   }
 
   return (
-    <div className="mt-5 divide-y divide-[var(--app-hairline)]">
+    <div className="divide-y divide-[var(--app-hairline)]">
       <Row
         label="Export your data"
-        hint="Every session, plus overlap-stripped totals in the CSV header. JSON contains the raw session objects."
+        hint="Every session you've recorded. CSV opens in a spreadsheet; JSON is for developers."
         action={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -316,7 +378,7 @@ function DataPrivacyRows({ onDeleted }) {
       />
       <Row
         label="Paired devices"
-        hint="Rename or revoke the trackers you've installed on other machines."
+        hint="Rename or remove the PCs running the tracker."
         action={
           <Button
             as={Link}
@@ -329,8 +391,8 @@ function DataPrivacyRows({ onDeleted }) {
         }
       />
       <Row
-        label="First-run flow"
-        hint="Reset the local onboarding record so consent + survey run again on your next visit."
+        label="Welcome steps"
+        hint="Show the first-run setup again on your next visit."
         action={
           <Button
             variant="secondary"
@@ -350,8 +412,8 @@ function DataPrivacyRows({ onDeleted }) {
           role="status"
           className={
             messageTone === 'danger'
-              ? 'border-l-2 border-[var(--app-danger)] py-3 pl-3 text-[12.5px] text-[var(--app-fg)]'
-              : 'border-l-2 border-[var(--app-accent-rail)] py-3 pl-3 text-[12.5px] text-[var(--app-fg-muted)]'
+              ? 'border-l-2 border-[var(--app-danger)] py-3 pl-3 text-[14px] text-[var(--app-fg)]'
+              : 'border-l-2 border-[var(--app-accent-rail)] py-3 pl-3 text-[14px] text-[var(--app-fg-muted)]'
           }
         >
           {message}
@@ -390,7 +452,7 @@ function DeleteAccountRow({ onDeleted }) {
     return (
       <Row
         label="Delete account"
-        hint="Erases every session, device, and profile record on the server, then removes your Cognito login. There's no undo."
+        hint="Permanently erases your sessions, devices and account. This can't be undone."
         action={
           <Button
             variant="danger"
@@ -407,18 +469,18 @@ function DeleteAccountRow({ onDeleted }) {
   return (
     <div className="space-y-3">
       <div>
-        <div className="text-[13px] text-[var(--app-fg)]">
+        <div className="text-[15px] font-semibold text-[var(--app-fg-strong)]">
           Type <span className="app-num text-[var(--app-danger)]">DELETE</span> to confirm
         </div>
-        <div className="mt-1 text-[12px] text-[var(--app-fg-muted)]">
+        <div className="app-wt-small mt-1 text-[14px] text-[var(--app-fg-muted)]">
           This runs immediately. You'll be signed out and returned to the landing page.
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="max-w-[220px] flex-1">
           <Input
-            size="sm"
             autoFocus
+            aria-label="Type DELETE to confirm"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             placeholder="DELETE"
@@ -437,31 +499,32 @@ function DeleteAccountRow({ onDeleted }) {
           Delete forever
         </Button>
       </div>
-      {error && <div className="text-[12.5px] text-[var(--app-danger)]">{error}</div>}
+      {error && (
+        <div role="alert" className="text-[14px] text-[var(--app-danger)]">
+          {error}
+        </div>
+      )}
     </div>
   )
 }
 
 function SettingsSkeleton() {
   return (
-    <div className="mx-auto w-full px-6 py-8 lg:px-10" style={{ maxWidth: '1100px' }}>
-      <Skeleton className="h-6 w-24" />
-      <div className="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-[180px_1fr] lg:gap-16">
-        <div className="hidden lg:block">
+    <PageFrame>
+      <Skeleton className="h-9 w-36" />
+      <Skeleton className="mt-3 h-4 w-72" />
+      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[200px_minmax(0,880px)] lg:gap-12">
+        <div className="hidden space-y-1 lg:block">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="mb-1 h-4 w-24" />
+            <Skeleton key={i} className="h-10 w-full" />
           ))}
         </div>
-        <div className="space-y-14">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-3">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-5 w-56" />
-              <Skeleton className="mt-4 h-24 w-full" />
-            </div>
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-[220px] rounded-[var(--app-r-3)]" />
           ))}
         </div>
       </div>
-    </div>
+    </PageFrame>
   )
 }

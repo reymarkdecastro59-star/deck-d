@@ -6,8 +6,11 @@ from decimal import Decimal
 
 import requests
 
-from shared.db import iter_all_game_metadata, iter_recent_session_exes, put_game_metadata, put_trending_daily
+from shared.canonical import with_cache_id
+from shared.db import iter_all_game_metadata, iter_recent_session_games, put_game_metadata, put_trending_daily
 from shared.rawg import fetch_metadata
+from shared import steam_api
+from shared.safe_log import safe_error
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +33,10 @@ def _api_key() -> str:
 
 def _fetch_rawg_trending() -> list[dict] | None:
     """
-    Query RAWG for recently-added, well-reviewed games and return a list of
-    trimmed game objects.
+    Query RAWG for games released in the last 90 days, ranked by how many
+    players added them to their libraries ("-added"). The previous query also
+    required a Metacritic score, which RAWG rarely has for new releases, so it
+    returned nothing and Trending stayed empty.
 
     Returns None on any network or non-200 error so the caller can decide
     NOT to overwrite the existing DynamoDB item.
@@ -43,7 +48,6 @@ def _fetch_rawg_trending() -> list[dict] | None:
     params = {
         "ordering": "-added",
         "dates": f"{date_from},{date_to}",
-        "metacritic": "75,100",
         "page_size": 25,
         "key": _api_key(),
     }
@@ -51,7 +55,7 @@ def _fetch_rawg_trending() -> list[dict] | None:
     try:
         resp = requests.get(f"{_RAWG_BASE}/games", params=params, timeout=15)
     except requests.RequestException as exc:
-        logger.error("trending_rawg_request_error err=%s", exc)
+        logger.error("trending_rawg_request_error err=%s", safe_error(exc))
         return None
 
     if not resp.ok:
@@ -90,11 +94,17 @@ def _fetch_rawg_trending() -> list[dict] | None:
 
 def _refresh_trending() -> None:
     """
-    Fetch trending games from RAWG and write to DynamoDB.
-    On any RAWG failure: log loudly and return without touching DynamoDB,
+    Trending = what's popular right now, the same for everyone. Source:
+    Steam's most-played chart (needs STEAM_API_KEY); RAWG's recent releases
+    are the fallback when Steam isn't configured or fails.
+    On any failure: log loudly and return without touching DynamoDB,
     so the existing (possibly stale) item keeps serving.
     """
-    games = _fetch_rawg_trending()
+    games = steam_api.most_played() if steam_api.api_key() else None
+    source = "steam"
+    if games is None:
+        games = _fetch_rawg_trending()
+        source = "rawg"
     if games is None:
         logger.error(
             "trending_refresh_skipped reason=rawg_failure "
@@ -106,13 +116,19 @@ def _refresh_trending() -> None:
 
     # No TTL: the item is overwritten daily, and on failure the stale item must
     # keep serving (consumers show its age from `updated_at`). See B8.
-    put_trending_daily(games=games, updated_at=updated_at)
-    logger.info("trending_refresh_complete count=%d updated_at=%s", len(games), updated_at)
+    put_trending_daily(games=games, updated_at=updated_at, source=source)
+    logger.info("trending_refresh_complete source=%s count=%d updated_at=%s", source, len(games), updated_at)
 
 
 def handler(event: dict, context) -> dict:
+    # The 6-hourly schedule refreshes only Trending ("popular right now");
+    # the full metadata pass stays daily.
+    if (event or {}).get("trending_only"):
+        _refresh_trending()
+        return {"trending_only": True}
     stale_days = _env_int("REFRESH_STALE_DAYS", 7)
-    failed_retry_days = _env_int("FAILED_RETRY_DAYS", 30)
+    # Was 30: one failed lookup (e.g. a missing API key) hid art for a month.
+    failed_retry_days = _env_int("FAILED_RETRY_DAYS", 1)
     max_calls = _env_int("MAX_CALLS_PER_RUN", 200)
 
     now = int(time.time())
@@ -122,11 +138,11 @@ def handler(event: dict, context) -> dict:
 
     # ── a) existing cache items ────────────────────────────────────────────
     cached = iter_all_game_metadata()
-    cached_map: dict[str, dict] = {item["game_exe"]: item for item in cached}
+    cached_map: dict[str, dict] = {item.get("cache_id") or item["game_exe"]: item for item in cached}
 
-    # ── b) new exes from recent sessions ──────────────────────────────────
-    recent_exes = iter_recent_session_exes(session_since)
-    new_exes = recent_exes - cached_map.keys()
+    # ── b) new exe + title pairs from recent sessions ─────────────────────
+    recent = iter_recent_session_games(session_since)  # {cache id: {exe, title, users}}
+    new_exes = recent.keys() - cached_map.keys()
 
     # ── c) stale items that need refresh ──────────────────────────────────
     stale_exes: list[str] = []
@@ -141,7 +157,24 @@ def handler(event: dict, context) -> dict:
                 stale_exes.append(exe)
 
     # ── d) merge queues (new first, then stale) and cap ───────────────────
-    queue = list(new_exes) + stale_exes
+    # Titles reported by more players go first, and one account can claim
+    # at most PER_USER_NEW_PER_RUN new lookups — so a flood of made-up titles
+    # from one account can't starve real games of the per-run budget.
+    per_user_cap = _env_int("PER_USER_NEW_PER_RUN", 20)
+    spent: dict[str, int] = {}
+    ranked_new: list[str] = []
+    for cid in sorted(new_exes, key=lambda c: len(recent[c]["users"]), reverse=True):
+        users = recent[cid]["users"]
+        # Every reporting account is charged, and a title is looked up only
+        # while at least one of them has budget left — so a few colluding
+        # accounts can't escape the cap by co-reporting each other's titles.
+        if not any(spent.get(u, 0) < per_user_cap for u in users):
+            continue
+        for u in users:
+            spent[u] = spent.get(u, 0) + 1
+        ranked_new.append(cid)
+    new_exes = set(ranked_new)
+    queue = ranked_new + stale_exes
     queue = queue[:max_calls]
 
     processed = 0
@@ -149,11 +182,15 @@ def handler(event: dict, context) -> dict:
     refreshed = 0
     failed_count = 0
 
-    for exe in queue:
-        metadata = fetch_metadata(exe)
+    for cid in queue:
+        if cid in recent:
+            exe, title = recent[cid]["exe"], recent[cid]["title"]
+        else:  # stale cache entry: re-run the same lookup it was made with
+            exe, title = cached_map[cid]["game_exe"], cached_map[cid].get("title")
+        metadata = with_cache_id(fetch_metadata(exe, title), exe, title)
         put_game_metadata(metadata)
         processed += 1
-        if exe in new_exes:
+        if cid in new_exes:
             new_count += 1
         else:
             refreshed += 1

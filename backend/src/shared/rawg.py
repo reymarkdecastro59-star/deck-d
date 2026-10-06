@@ -5,6 +5,10 @@ import time
 from decimal import Decimal
 from typing import Optional
 
+# One title normaliser for cache ids, RAWG matching and import matching.
+from .canonical import loose as _loose
+from .safe_log import safe_error
+
 import requests
 
 logger = logging.getLogger(__name__)
@@ -57,10 +61,21 @@ def _exe_to_name(exe_lower: str) -> str:
     return stem.title()
 
 
-def _confident_match(exe_lower: str, result: dict) -> bool:
-    """Return True if the RAWG result is a confident match for exe_lower."""
-    query_name = _normalize(_exe_to_name(exe_lower))
+def _confident_match(exe_lower: str, result: dict, name: Optional[str] = None) -> bool:
+    """Return True if the RAWG result is a confident match for exe_lower.
+
+    When the tracker supplied the game's real title (`name`, e.g. from the
+    Steam app manifest), that is compared first — it is far more reliable
+    than a name guessed from the exe file name.
+    """
     result_name = _normalize(result.get("name", ""))
+    if name and _loose(name):
+        # The real title decides on its own: the exe-name heuristic below is
+        # loose enough to accept "Alone in the Dark" for lurkinthedark.exe.
+        a = _loose(name)
+        b = _loose(result.get("name", ""))
+        return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= 0.80
+    query_name = _normalize(_exe_to_name(exe_lower))
     ratio = difflib.SequenceMatcher(None, query_name, result_name).ratio()
     if ratio >= 0.60:
         return True
@@ -72,7 +87,8 @@ def _confident_match(exe_lower: str, result: dict) -> bool:
     return False
 
 
-def _parse_detail(exe_lower: str, summary: dict, detail: dict, fetched_at: int) -> dict:
+def _parse_detail(exe_lower: str, summary: dict, detail: dict, fetched_at: int,
+                  title: Optional[str] = None) -> dict:
     """Build a normalized metadata dict from RAWG search summary + detail response."""
     genres = [g["name"] for g in detail.get("genres") or []]
     # tags sorted by RAWG relevance (they come ranked by games_count descending)
@@ -94,6 +110,11 @@ def _parse_detail(exe_lower: str, summary: dict, detail: dict, fetched_at: int) 
         "rating": Decimal(str(detail["rating"])) if detail.get("rating") is not None else None,
         "fetched_at": fetched_at,
         "resolution_failed": False,
+        # Set when a client-reported title chose the match. The cache is
+        # shared across users, so such entries only apply to sessions with
+        # the same title (see canonical.meta_applies) — one user's upload
+        # can't relabel a common exe for everyone.
+        **({"resolved_from_title": _loose(title)} if title and _loose(title) else {}),
     }
 
 
@@ -118,15 +139,27 @@ def _failed_item(exe_lower: str, fetched_at: int) -> dict:
     }
 
 
-def fetch_metadata(exe_lower: str) -> dict:
+def fetch_metadata(exe_lower: str, name: Optional[str] = None) -> dict:
     """
-    Search RAWG for exe_lower. Always returns a metadata dict.
-    Sets resolution_failed=True if no confident match or any network error.
-    Does NOT retry on 429 — caller (cron) handles that on the next pass.
+    Search RAWG for a game. Always returns a metadata dict.
+
+    `name` is the title the tracker reported for the session; it is searched
+    when present (the exe file name is only a fallback — "lurkinthedark.exe"
+    style guesses rarely match). Sets resolution_failed=True if no confident
+    match or any network error. Does NOT retry on 429 — the next pass will.
     """
     fetched_at = int(time.time())
     key = _api_key()
-    search_name = _exe_to_name(exe_lower)
+    if not key:
+        # Every call would 401; record the miss (retried daily) and skip the network.
+        logger.error("rawg_api_key_missing exe=%s", exe_lower)
+        return _failed_item(exe_lower, fetched_at)
+    # A title with no letters or digits ("!!!") can't be keyed per title
+    # (it would land in the shared exe-only slot), so it is ignored and the
+    # exe name decides: the client then has no say over a shared entry.
+    if not _loose(name or ""):
+        name = None
+    search_name = (name or "").strip() or _exe_to_name(exe_lower)
 
     try:
         resp = requests.get(
@@ -135,7 +168,7 @@ def fetch_metadata(exe_lower: str) -> dict:
             timeout=10,
         )
     except requests.RequestException as exc:
-        logger.warning("rawg_search_error exe=%s err=%s", exe_lower, exc)
+        logger.warning("rawg_search_error exe=%s err=%s", exe_lower, safe_error(exc))
         return _failed_item(exe_lower, fetched_at)
 
     if resp.status_code == 429:
@@ -150,8 +183,8 @@ def fetch_metadata(exe_lower: str) -> dict:
     if not results:
         return _failed_item(exe_lower, fetched_at)
 
-    top = results[0]
-    if not _confident_match(exe_lower, top):
+    top = next((r for r in results if _confident_match(exe_lower, r, name)), None)
+    if top is None:
         return _failed_item(exe_lower, fetched_at)
 
     # Fetch detail for genres + tags
@@ -163,14 +196,14 @@ def fetch_metadata(exe_lower: str) -> dict:
             timeout=10,
         )
     except requests.RequestException as exc:
-        logger.warning("rawg_detail_error exe=%s rawg_id=%s err=%s", exe_lower, rawg_id, exc)
+        logger.warning("rawg_detail_error exe=%s rawg_id=%s err=%s", exe_lower, rawg_id, safe_error(exc))
         return _failed_item(exe_lower, fetched_at)
 
     if not detail_resp.ok:
         logger.warning("rawg_detail_non_ok exe=%s status=%s", exe_lower, detail_resp.status_code)
         return _failed_item(exe_lower, fetched_at)
 
-    return _parse_detail(exe_lower, top, detail_resp.json(), fetched_at)
+    return _parse_detail(exe_lower, top, detail_resp.json(), fetched_at, name)
 
 
 def _search_confident_match(query: str, result: dict) -> bool:
@@ -200,7 +233,7 @@ def search_game_by_name(name: str, retries: int = 2, backoff_sec: float = 0.25) 
             break
         except requests.RequestException as exc:
             if attempt == retries:
-                logger.warning("rawg_search_name_error name=%s err=%s", name, exc)
+                logger.warning("rawg_search_name_error name=%s err=%s", name, safe_error(exc))
                 return None
             time.sleep(backoff_sec * (attempt + 1))
     if resp is None or not resp.ok:
@@ -258,7 +291,7 @@ def search_games_by_genres(
     try:
         resp = requests.get(f"{_RAWG_BASE}/games", params=params, timeout=10)
     except requests.RequestException as exc:
-        logger.warning("rawg_genre_search_error err=%s", exc)
+        logger.warning("rawg_genre_search_error err=%s", safe_error(exc))
         return None
     if not resp.ok:
         logger.warning("rawg_genre_search_non_ok status=%s", resp.status_code)

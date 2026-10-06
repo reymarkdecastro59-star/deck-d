@@ -7,6 +7,8 @@ from typing import Optional
 
 from aws_lambda_powertools import Logger
 from shared.auth import get_user_id
+from shared.safe_log import safe_error
+from shared.canonical import lookup_meta, metadata_ids
 from shared.bedrock import (
     BedrockBadResponseError,
     BedrockError,
@@ -73,6 +75,19 @@ def handler(event: dict, context) -> dict:
 
 def _get_recommendations(event: dict, context) -> dict:
     user_id = get_user_id(event)
+    # The Trending screen only needs the shared daily list: skip the genre
+    # and LLM tiers (slow, and LLM picks cost money).
+    if ((event.get("queryStringParameters") or {}).get("tier")) == "trending":
+        item = get_trending_daily() or {}  # one read for games, age and source
+        return {
+            "statusCode": 200,
+            "headers": {**CORS_HEADERS, "Cache-Control": _CACHE_HEADER},
+            "body": json.dumps(
+                {"trending": item.get("games") or [], "trending_updated_at": item.get("updated_at"),
+                 "trending_source": item.get("source")},
+                cls=_DecimalEncoder,  # ratings are stored as Decimal
+            ),
+        }
     hashed = hashlib.sha256(user_id.encode()).hexdigest()[:12]
 
     trending = _trending()
@@ -106,6 +121,7 @@ def _trending() -> list:
     return item.get("games", []) or []
 
 
+
 # ---------------------------------------------------------------------------
 # Tier 2 — genre-based
 # ---------------------------------------------------------------------------
@@ -125,13 +141,13 @@ def _genre_based_for(user_id: str, user_hash: str) -> Optional[list]:
     if not sessions:
         return None
 
-    exes = sorted({s.game_exe.lower() for s in sessions if s.game_exe})
-    metadata_by_exe = batch_get_game_metadata(exes)
-    resolved_metas = {
-        exe: m
-        for exe, m in metadata_by_exe.items()
-        if not m.get("resolution_failed", False)
-    }
+    metadata = batch_get_game_metadata(metadata_ids(sessions))
+    # Shared cache: only entries that apply to this user's own titles.
+    resolved_metas: dict[str, dict] = {}
+    for s in sessions:
+        meta = lookup_meta(s, metadata) if s.game_exe else None
+        if meta:
+            resolved_metas.setdefault(s.game_exe.lower(), meta)
     if len(resolved_metas) < _GENRE_MIN_RESOLVED_GAMES:
         return None
 
@@ -201,13 +217,13 @@ def _top_picks_for(
     if not sessions:
         return None
 
-    exes = sorted({s.game_exe.lower() for s in sessions if s.game_exe})
-    metadata_by_exe = batch_get_game_metadata(exes)
-    resolved_metas = {
-        exe: m
-        for exe, m in metadata_by_exe.items()
-        if not m.get("resolution_failed", False)
-    }
+    metadata = batch_get_game_metadata(metadata_ids(sessions))
+    # Shared cache: only entries that apply to this user's own titles.
+    resolved_metas: dict[str, dict] = {}
+    for s in sessions:
+        meta = lookup_meta(s, metadata) if s.game_exe else None
+        if meta:
+            resolved_metas.setdefault(s.game_exe.lower(), meta)
     if len(resolved_metas) < _LLM_MIN_RESOLVED_GAMES:
         return None
 
@@ -275,7 +291,7 @@ def _top_picks_for(
             "bedrock_call_failed",
             user_id_hash=user_hash,
             err=type(exc).__name__,
-            err_msg=str(exc)[:200],
+            err_msg=safe_error(exc, 200),
         )
         return _serve_stale_or_none(cached_item)
     except Exception as exc:
@@ -286,7 +302,7 @@ def _top_picks_for(
             "top_picks_unexpected_error",
             user_id_hash=user_hash,
             err=type(exc).__name__,
-            err_msg=str(exc)[:200],
+            err_msg=safe_error(exc, 200),
         )
         return _serve_stale_or_none(cached_item)
 

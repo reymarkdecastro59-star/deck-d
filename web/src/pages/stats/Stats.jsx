@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
-import { BarChart3, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, BarChart3, RefreshCw } from 'lucide-react'
+import { Art } from '@/app/ui/Art'
 import { EmptyState } from '@/app/ui/EmptyState'
 import { ErrorState } from '@/app/ui/ErrorState'
 import { IconButton } from '@/app/ui/IconButton'
-import { SectionHead } from '@/app/ui/SectionHead'
+import { PageFrame, PageHeader } from '@/app/ui/PageHeader'
+import { Panel, PanelHead } from '@/app/ui/Panel'
 import { SegmentedControl } from '@/app/ui/SegmentedControl'
 import { Skeleton } from '@/app/ui/Skeleton'
 import { StatsStrip } from '@/app/ui/StatsStrip'
 import { BarChart, DistributionBar, Heatmap, MomentumBar } from '@/app/viz'
-import { coverBackgroundStyle } from '@/app/ui/safeUrl'
 import { getLabelColor } from '@/app/design/tokens'
 import { formatHours, formatMinutes } from '@/lib/format'
 import { labelTitle } from '@/pages/sessions/labels'
+import { gameKey } from '@/pages/library/gameKey'
 import { rangeToWindow, useStats } from './useStats'
 import {
   dailyBuckets,
@@ -24,19 +27,24 @@ import {
 } from './aggregations'
 
 const RANGES = [
-  { value: '7d', label: '7d' },
-  { value: '30d', label: '30d' },
-  { value: '90d', label: '90d' },
-  { value: 'all', label: 'All' },
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
+  { value: 'all', label: 'All time' },
 ]
 
 const RANGE_DAY_COUNT = { '7d': 7, '30d': 30, '90d': 90 }
 const ALL_TIME_BUCKET_DAYS = 30
+// Monday-first, like the Week Meter everywhere else (matrix rows are Sun=0).
+const MON_FIRST = [1, 2, 3, 4, 5, 6, 0]
 
 /**
- * Stats — a quiet personal report. Kills the 4-KPI-tile row in favor of
- * a typographic StatsStrip, drops the card wrappers around every chart,
- * and lets sections breathe with hairline separators instead of borders.
+ * Stats (UX v2 §5.6) — a personal report in question panels:
+ *   readouts for the chosen range
+ *   How much you played (daily bars)
+ *   When you play (heatmap) · How long you play (length bars)
+ *   What kind of play (labels) · Top games by momentum
+ * Every number follows the range control.
  */
 export default function Stats() {
   const [range, setRange] = useState('all')
@@ -48,28 +56,23 @@ export default function Stats() {
   if (loading) return <StatsSkeleton />
   if (error) {
     return (
-      <Container>
-        <Header range={range} onRangeChange={setRange} onReload={reload} loading={false} />
-        <div className="mt-6">
-          <ErrorState title="We couldn't load your stats" description={error} onRetry={reload} />
-        </div>
-      </Container>
+      <PageFrame>
+        <Header range={range} onRangeChange={setRange} onReload={reload} />
+        <ErrorState title="We couldn't load your stats" description={error} onRetry={reload} />
+      </PageFrame>
     )
   }
 
-  const total = summary?.total_sessions ?? 0
-  if (total === 0) {
+  if ((summary?.total_sessions ?? 0) === 0) {
     return (
-      <Container>
+      <PageFrame>
         <Header range={range} onRangeChange={setRange} onReload={reload} showControls={false} />
-        <div className="mt-8">
-          <EmptyState
-            icon={<BarChart3 className="h-8 w-8" strokeWidth={1.5} />}
-            title="Nothing to analyze yet"
-            description="Stats become useful after you've logged real time — heatmaps, breakdowns, and length distributions all fill in from your actual sessions."
-          />
-        </div>
-      </Container>
+        <EmptyState
+          icon={<BarChart3 className="h-8 w-8" strokeWidth={1.5} />}
+          title="Nothing to show yet"
+          description="Play a few sessions with the tracker running and your patterns will appear here."
+        />
+      </PageFrame>
     )
   }
 
@@ -84,35 +87,27 @@ export default function Stats() {
   )
 }
 
-function Container({ children }) {
-  return (
-    <div
-      className="mx-auto w-full px-6 py-8 lg:px-10"
-      style={{ maxWidth: 'var(--app-content-max)' }}
-    >
-      {children}
-    </div>
-  )
-}
-
 function Header({ range, onRangeChange, onReload, showControls = true }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <h1
-        className="font-normal tracking-tight text-[var(--app-fg-strong)]"
-        style={{ fontSize: 'clamp(20px, 1.8vw, 26px)' }}
-      >
-        Stats
-      </h1>
-      {showControls && (
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-          <SegmentedControl items={RANGES} value={range} onChange={onRangeChange} size="sm" />
-          <IconButton size="sm" label="Reload stats" onClick={onReload}>
-            <RefreshCw />
-          </IconButton>
-        </div>
-      )}
-    </div>
+    <PageHeader
+      title="Stats"
+      lede="How much, when and what you play."
+      actions={
+        showControls && (
+          <>
+            <SegmentedControl
+              items={RANGES}
+              value={range}
+              onChange={onRangeChange}
+              ariaLabel="Time range"
+            />
+            <IconButton label="Reload stats" onClick={onReload}>
+              <RefreshCw />
+            </IconButton>
+          </>
+        )
+      }
+    />
   )
 }
 
@@ -120,7 +115,10 @@ function StatsPopulated({ range, setRange, reload, summary, sessions }) {
   const quick = useMemo(() => quickStats(sessions), [sessions])
   const bucketDays = RANGE_DAY_COUNT[range] ?? ALL_TIME_BUCKET_DAYS
   const daily = useMemo(() => dailyBuckets(sessions, bucketDays), [sessions, bucketDays])
-  const heatmap = useMemo(() => hourOfDayMatrix(sessions), [sessions])
+  const heatmap = useMemo(() => {
+    const m = hourOfDayMatrix(sessions)
+    return MON_FIRST.map((d) => m[d])
+  }, [sessions])
   const labels = useMemo(() => labelBreakdown(sessions), [sessions])
   const lengths = useMemo(() => sessionLengthBuckets(sessions), [sessions])
 
@@ -131,225 +129,206 @@ function StatsPopulated({ range, setRange, reload, summary, sessions }) {
       color: getLabelColor(l.label),
       label: labelTitle(l.label),
     }))
-    const total = labels.reduce((sum, l) => sum + l.hours, 0)
-    return { labelSegments: segments, labelTotal: total }
+    return { labelSegments: segments, labelTotal: labels.reduce((sum, l) => sum + l.hours, 0) }
   }, [labels])
 
-  const topGames = (summary.games || []).slice(0, 8)
-  const maxDecay = Math.max(0.0001, ...topGames.map((g) => g.decay_hours))
+  // Momentum comes from tracked sessions; imported-only games have none.
+  const topGames = (summary.games || []).filter((g) => (g.decay_hours ?? 0) > 0).slice(0, 6)
+  const maxDecay = Math.max(0.0001, ...topGames.map((g) => g.decay_hours ?? 0))
   const maxLength = Math.max(1, ...lengths.map((l) => l.value))
 
-  const rangeLabel = RANGES.find((r) => r.value === range)?.label ?? 'All'
-  const rangeLower = rangeLabel === 'All' ? 'all time' : `last ${rangeLabel}`
+  const dailyLower = `the last ${bucketDays} days`
+  const dailyTotal = daily.reduce((sum, b) => sum + b.value, 0)
 
+  // All-time hours come from the server, where sessions overlapping on two
+  // devices count once; a shorter range sums its sessions.
+  // Stats is tracked play only; the dashboard total also counts launcher
+  // imports, so all-time uses tracked_hours (older APIs: total_hours).
+  const hours = range === 'all' ? (summary.tracked_hours ?? summary.total_hours) : quick.totalHours
   const strip = [
-    { label: 'Hours', value: formatHours(summary.total_hours), unit: 'h' },
-    { label: 'Momentum', value: formatHours(summary.decay_hours), unit: 'h' },
-    { label: 'Avg session', value: formatMinutes(quick.avgMinutes) },
-    { label: 'Active days', value: quick.activeDays.toString() },
+    { label: 'Hours played', value: formatHours(hours), unit: 'h' },
+    { label: 'Sessions', value: quick.count.toLocaleString() },
+    { label: 'Typical session', value: formatMinutes(quick.medianMinutes) },
+    { label: 'Play days', value: quick.activeDays.toLocaleString() },
   ]
 
   return (
-    <Container>
+    <PageFrame>
       <Header range={range} onRangeChange={setRange} onReload={reload} />
 
-      <p className="mt-3 max-w-[640px] text-[13px] leading-relaxed text-[var(--app-fg-muted)]">
-        Headline hours are union-corrected. Shape charts below are additive over your session list —
-        same {sessions.length.toLocaleString()} session{sessions.length === 1 ? '' : 's'} in the{' '}
-        {rangeLower} window.
-      </p>
+      <StatsStrip items={strip} />
 
-      <StatsStrip items={strip} className="mt-8" />
-
-      <Section>
-        <SectionHead
-          eyebrow="Daily activity"
-          title={`Hours per day — ${rangeLower}`}
-          aside={
-            <div className="text-right">
-              <div
-                className="app-num leading-none text-[var(--app-fg-strong)]"
-                style={{ fontSize: 'clamp(18px, 1.4vw, 22px)' }}
-              >
-                {formatHours(daily.reduce((s, b) => s + b.value, 0))}
-                <span className="text-[12px] text-[var(--app-fg-muted)]"> h</span>
-              </div>
-              <div className="app-num mt-0.5 text-[10.5px] text-[var(--app-fg-dim)]">total</div>
-            </div>
+      <Panel aria-labelledby="st-daily" className="mt-6">
+        <PanelHead
+          id="st-daily"
+          title="How much you played"
+          description={`Hours per day, ${dailyLower}`}
+          action={
+            <span className="app-num text-[17px] text-[var(--app-fg-strong)]">
+              {formatHours(dailyTotal)} h
+            </span>
           }
         />
-        <div className="mt-4">
-          <BarChart data={daily} height={140} ariaLabel="Hours per day" />
-        </div>
-      </Section>
+        <BarChart data={daily} height={150} ariaLabel={`Hours per day, ${dailyLower}`} />
+      </Panel>
 
-      <Section>
-        <SectionHead
-          eyebrow="When you play"
-          title="Weekday × hour"
-          aside={
-            quick.longest && (
-              <div className="text-right">
-                <div className="app-eyebrow text-[10px] text-[var(--app-fg-dim)]">Longest</div>
-                <div className="app-num mt-0.5 text-[13px] text-[var(--app-fg)]">
-                  {formatMinutes(quick.longest.duration_sec / 60)}
-                </div>
-              </div>
-            )
-          }
-        />
-        <div className="mt-4">
+      <div className="mt-6 flex flex-wrap gap-6">
+        <Panel aria-labelledby="st-when" className="flex-[7_1_560px]">
+          <PanelHead
+            id="st-when"
+            title="When you play"
+            description="Hours by day of the week and time of day"
+          />
           <Heatmap
             matrix={heatmap}
-            rowLabels={WEEKDAY_LONG}
+            rowLabels={MON_FIRST.map((d) => WEEKDAY_LONG[d])}
             ariaLabel="Hours played by weekday and hour"
           />
-        </div>
-      </Section>
+        </Panel>
 
-      <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-2">
-        <section>
-          <SectionHead eyebrow="Label breakdown" title={`Share by label — ${rangeLower}`} />
-          <div className="mt-4">
-            <DistributionBar
-              segments={labelSegments}
-              height={10}
-              ariaLabel="Hours by session label"
-            />
-          </div>
-          <ul className="mt-4 space-y-2">
-            {labels.length === 0 && (
-              <li className="text-[13px] text-[var(--app-fg-muted)]">Nothing labelled in range.</li>
-            )}
-            {labels.map((l) => {
-              const pct = labelTotal > 0 ? (l.hours / labelTotal) * 100 : 0
-              return (
-                <li key={l.label} className="flex items-center gap-3">
-                  <span
-                    aria-hidden
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: getLabelColor(l.label) }}
-                  />
-                  <span className="flex-1 text-[13px] text-[var(--app-fg)]">
-                    {labelTitle(l.label)}
-                  </span>
-                  <span className="app-num text-[12px] text-[var(--app-fg-muted)]">
-                    {l.count} · {formatHours(l.hours)}h
-                  </span>
-                  <span className="app-num w-10 text-right text-[12px] text-[var(--app-fg-dim)]">
-                    {pct.toFixed(0)}%
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-
-        <section>
-          <SectionHead eyebrow="Session length" title="Distribution" />
-          <ul className="mt-4 space-y-2.5">
+        <Panel aria-labelledby="st-length" className="flex-[5_1_340px]">
+          <PanelHead
+            id="st-length"
+            title="How long you play"
+            description={
+              quick.longest
+                ? `Longest: ${formatMinutes(quick.longest.duration_sec / 60)} of ${quick.longest.game_name}`
+                : 'Sessions by length'
+            }
+          />
+          <ul className="space-y-3">
             {lengths.map((b) => {
-              const pct = maxLength > 0 ? (b.value / maxLength) * 100 : 0
+              const pct = (b.value / maxLength) * 100
               return (
-                <li key={b.label} className="flex items-center gap-3">
-                  <span className="w-14 shrink-0 text-[12.5px] text-[var(--app-fg-muted)]">
+                <li key={b.label} className="grid grid-cols-[64px_1fr_32px] items-center gap-3">
+                  <span className="app-num app-wt-small text-[14px] text-[var(--app-fg-muted)]">
                     {b.label}
                   </span>
-                  <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-[var(--app-bg-3)]">
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full bg-[var(--app-accent)]"
-                      style={{ width: `${pct}%`, opacity: b.value > 0 ? 0.85 : 0.15 }}
+                  <span className="relative h-2.5 overflow-hidden rounded-[3px] bg-[var(--app-bg-3)]">
+                    <span
+                      className="absolute inset-y-0 left-0 rounded-[3px] bg-[var(--app-accent)]"
+                      style={{ width: `${b.value > 0 ? Math.max(3, pct) : 0}%` }}
                     />
-                  </div>
-                  <span className="app-num w-10 text-right text-[12px] text-[var(--app-fg-dim)]">
+                  </span>
+                  <span className="app-num text-right text-[14px] text-[var(--app-fg)]">
                     {b.value}
                   </span>
                 </li>
               )
             })}
           </ul>
-        </section>
+        </Panel>
       </div>
 
-      <Section>
-        <SectionHead eyebrow="Top games" title="By momentum" viewAllTo="/library" />
-        {topGames.length === 0 ? (
-          <p className="mt-4 text-[13.5px] text-[var(--app-fg-muted)]">
-            No games ranked in this range.
-          </p>
-        ) : (
-          <ol className="mt-4 divide-y divide-[var(--app-hairline)]">
-            {topGames.map((g, i) => (
-              <li key={g.rawg_id ?? g.slug ?? g.game ?? i} className="flex items-center gap-4 py-3">
-                <span className="app-num w-5 shrink-0 text-right text-[12px] text-[var(--app-fg-dim)]">
-                  {i + 1}
-                </span>
-                <div
-                  aria-hidden
-                  className="h-11 w-8 shrink-0 overflow-hidden rounded-[3px] bg-[var(--app-bg-3)]"
-                  style={coverBackgroundStyle(g.background_image)}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] text-[var(--app-fg)]">{g.game}</div>
-                  <MomentumBar value={g.decay_hours} max={maxDecay} className="mt-2" />
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="app-num text-[13px] text-[var(--app-fg-strong)]">
-                    {formatHours(g.total_hours)}
-                    <span className="text-[11px] text-[var(--app-fg-muted)]"> h</span>
-                  </div>
-                  <div className="app-num mt-0.5 text-[11px] text-[var(--app-fg-dim)]">
-                    {formatHours(g.decay_hours)}h momentum
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </Section>
+      <div className="mt-6 flex flex-wrap gap-6">
+        <Panel aria-labelledby="st-kind" className="flex-[5_1_340px]">
+          <PanelHead
+            id="st-kind"
+            title="What kind of play"
+            description="Share of hours by session label"
+          />
+          {labels.length === 0 ? (
+            <p className="app-wt-small text-[15px] text-[var(--app-fg-muted)]">
+              No labelled sessions in this range.
+            </p>
+          ) : (
+            <>
+              <DistributionBar
+                segments={labelSegments}
+                height={12}
+                ariaLabel="Hours by session label"
+              />
+              <ul className="mt-4 space-y-2.5">
+                {labels.map((l) => {
+                  const pct = labelTotal > 0 ? (l.hours / labelTotal) * 100 : 0
+                  return (
+                    <li key={l.label} className="flex items-center gap-3 text-[14px]">
+                      <span
+                        aria-hidden
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: getLabelColor(l.label) }}
+                      />
+                      <span className="flex-1 text-[var(--app-fg)]">{labelTitle(l.label)}</span>
+                      <span className="app-num app-wt-small text-[var(--app-fg-muted)]">
+                        {formatHours(l.hours)} h · {l.count}{' '}
+                        {l.count === 1 ? 'session' : 'sessions'}
+                      </span>
+                      <span className="app-num w-12 text-right text-[var(--app-fg-strong)]">
+                        {pct.toFixed(0)}%
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
+        </Panel>
 
-      <div className="mt-10 border-t border-[var(--app-hairline)] pt-6">
-        <p className="max-w-[720px] text-[12px] leading-relaxed text-[var(--app-fg-dim)]">
-          <span className="app-eyebrow mr-2 text-[10px] text-[var(--app-fg-muted)]">
-            Reading this
-          </span>
-          Headline hours come from the server — same union math the dashboard uses, so two devices
-          playing the same game at once are counted once. Shape charts (heatmap, label breakdown,
-          length distribution) are additive over the raw session list — they describe when, what,
-          how long, not corrected total hours. Client-side aggregation covers the most recent 500
-          sessions.
-        </p>
+        <Panel aria-labelledby="st-top" className="flex-[7_1_520px]">
+          <PanelHead
+            id="st-top"
+            title="Top games by momentum"
+            description="Recent play counts more; it halves every 14 days"
+            action={
+              <Link
+                to="/library"
+                className="app-wt-small inline-flex shrink-0 items-center gap-1.5 text-[14px] text-[var(--app-fg-muted)] transition-colors [transition-duration:var(--app-dur-1)] hover:text-[var(--app-fg)]"
+              >
+                Library
+                <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
+              </Link>
+            }
+          />
+          {topGames.length === 0 ? (
+            <p className="app-wt-small text-[15px] text-[var(--app-fg-muted)]">No games yet.</p>
+          ) : (
+            <ol className="-mx-2.5">
+              {topGames.map((g, i) => (
+                <li key={g.rawg_id ?? g.slug ?? g.game ?? i}>
+                  <Link
+                    to={`/library/${gameKey(g)}`}
+                    className="grid grid-cols-[20px_36px_minmax(0,1fr)_auto] items-center gap-3.5 rounded-[var(--app-r-2)] px-2.5 py-2 transition-colors [transition-duration:var(--app-dur-1)] hover:bg-[var(--app-bg-3)]"
+                  >
+                    <span className="app-num text-right text-[14px] text-[var(--app-fg-dim)]">
+                      {i + 1}
+                    </span>
+                    <Art game={g} className="h-12 w-9 rounded-[4px]" />
+                    <span className="flex min-w-0 flex-col gap-2">
+                      <span className="truncate text-[15px] font-semibold text-[var(--app-fg-strong)]">
+                        {g.game}
+                      </span>
+                      <MomentumBar value={g.decay_hours ?? 0} max={maxDecay} />
+                    </span>
+                    <span className="flex flex-col items-end gap-0.5">
+                      <span className="app-num text-[15px] text-[var(--app-fg-strong)]">
+                        {formatHours(g.decay_hours)} h
+                      </span>
+                      <span className="app-num app-wt-small text-[13px] text-[var(--app-fg-muted)]">
+                        {formatHours(g.total_hours)} h total
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Panel>
       </div>
-    </Container>
+    </PageFrame>
   )
-}
-
-function Section({ children }) {
-  return <section className="mt-10">{children}</section>
 }
 
 function StatsSkeleton() {
   return (
-    <Container>
-      <div className="flex items-center gap-6">
-        <Skeleton className="h-6 w-20" />
-        <Skeleton className="ml-auto h-8 w-56" />
+    <PageFrame>
+      <Skeleton className="h-9 w-32" />
+      <Skeleton className="mt-3 h-4 w-72" />
+      <Skeleton className="mt-8 h-[116px] rounded-[var(--app-r-3)]" />
+      <Skeleton className="mt-6 h-[260px] rounded-[var(--app-r-3)]" />
+      <div className="mt-6 flex flex-wrap gap-6">
+        <Skeleton className="h-[300px] min-w-0 flex-[7_1_560px] rounded-[var(--app-r-3)]" />
+        <Skeleton className="h-[300px] min-w-0 flex-[5_1_340px] rounded-[var(--app-r-3)]" />
       </div>
-      <Skeleton className="mt-4 h-3 w-3/4 max-w-[560px]" />
-      <div className="mt-8 grid grid-cols-2 gap-y-6 md:flex md:gap-0">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="min-w-0 md:flex-1 md:px-6">
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="mt-3 h-2.5 w-16" />
-          </div>
-        ))}
-      </div>
-      <Skeleton className="mt-10 h-40" />
-      <Skeleton className="mt-10 h-44" />
-      <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-2">
-        <Skeleton className="h-52" />
-        <Skeleton className="h-52" />
-      </div>
-    </Container>
+    </PageFrame>
   )
 }

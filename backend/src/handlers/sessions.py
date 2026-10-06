@@ -4,6 +4,7 @@ from aws_lambda_powertools import Logger
 from pydantic import ValidationError
 from shared.auth import get_user_id, get_user_email
 from shared.cors import CORS_HEADERS
+from shared.metadata_ingest import ensure_metadata
 from shared.db import (
     put_session, put_sessions_batch, get_sessions, get_or_create_profile,
     delete_session, update_session_label, touch_device, DeviceLimitExceededError,
@@ -98,6 +99,7 @@ def _post_session(event: dict) -> dict:
         device_id=device_id,
     )
     put_session(session)
+    ensure_metadata([session])
     logger.info("session_created", session_id=session.session_id, game_name=session.game_name,
                 duration_sec=session.duration_sec, device_id=device_id)
     return _resp(201, {"session_id": session.session_id})
@@ -139,6 +141,7 @@ def _post_batch(event: dict) -> dict:
         for item in data.sessions
     ]
     put_sessions_batch(sessions)
+    ensure_metadata(sessions)
     logger.info("sessions_batch_created", user_id=user_id, count=len(sessions), device_id=device_id)
     return _resp(201, {"count": len(sessions), "session_ids": [s.session_id for s in sessions]})
 

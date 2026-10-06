@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { cn } from './cn'
 import { safeImageUrl } from './safeUrl'
 import { gameColor } from '@/lib/gameColor'
@@ -9,8 +10,23 @@ import { gameColor } from '@/lib/gameColor'
  * (see safeUrl). Without art, a tonal block in the game's identity colour
  * with its initial stands in — never an empty grey box.
  */
-export function Art({ game, name, className, position = '50% 30%', initial = true, children }) {
-  const url = safeImageUrl(game?.background_image)
+export function Art({
+  game,
+  name,
+  className,
+  position = '50% 30%',
+  initial = true,
+  portrait = false,
+  children,
+}) {
+  // 3:4 tiles prefer a true portrait cover (Steam's library_600x900) when the
+  // game has one; if it 404s (some older games), fall back to the key art.
+  // Remember which URL failed (not a boolean) so a reused tile showing a
+  // different game still tries that game's cover.
+  const [failedCover, setFailedCover] = useState(null)
+  const coverUrl = portrait ? safeImageUrl(game?.cover_image) : null
+  const cover = coverUrl && coverUrl !== failedCover ? coverUrl : null
+  const url = cover || safeImageUrl(game?.background_image)
   const label = name || game?.game || game?.game_name || 'Game'
   return (
     <div
@@ -25,7 +41,8 @@ export function Art({ game, name, className, position = '50% 30%', initial = tru
           decoding="async"
           draggable={false}
           className="app-art absolute inset-0 h-full w-full select-none object-cover"
-          style={{ objectPosition: position }}
+          style={{ objectPosition: cover ? '50% 50%' : position }}
+          onError={cover ? () => setFailedCover(cover) : undefined}
         />
       ) : (
         initial && (

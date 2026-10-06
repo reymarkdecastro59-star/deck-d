@@ -77,4 +77,5 @@ def test_signed_out_state(tmp_deckd):
 def test_only_intended_methods_are_public():
     public = {n for n in dir(companion.Bridge) if not n.startswith("_")}
     assert public == {"get_state", "sign_in", "sign_out", "set_autostart", "sync_now",
-                      "open_dashboard", "open_signup", "hide", "minimize"}
+                      "open_dashboard", "open_signup", "hide", "minimize",
+                      "get_import_status", "set_import_account", "start_import"}
