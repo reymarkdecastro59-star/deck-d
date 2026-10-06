@@ -20,6 +20,7 @@ from aws_lambda_powertools import Logger
 from shared.auth import get_user_id
 from shared.cors import CORS_HEADERS
 from shared.imports import (
+    clear_import_request,
     delete_steam_link,
     get_steam_link,
     put_steam_link,
@@ -141,6 +142,9 @@ def _sync(user_id: str) -> dict:
         return _resp(502, {"error": "steam_unavailable"})
     summary = replace_import(user_id, "steam", games, link.get("name"), method="steam_api")
     set_steam_api_status(user_id, True)
+    # The library is in: any pending "ask the PC" request is satisfied too,
+    # otherwise the web keeps waiting for a PC import that will never come.
+    clear_import_request(user_id, int(summary["imported_at"]))
     logger.info("steam_sync_ok", count=summary["count"])
     return _resp(200, {"import": {
         "source": "steam",

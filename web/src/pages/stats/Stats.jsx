@@ -132,7 +132,8 @@ function StatsPopulated({ range, setRange, reload, summary, sessions }) {
     return { labelSegments: segments, labelTotal: labels.reduce((sum, l) => sum + l.hours, 0) }
   }, [labels])
 
-  const topGames = (summary.games || []).slice(0, 6)
+  // Momentum comes from tracked sessions; imported-only games have none.
+  const topGames = (summary.games || []).filter((g) => (g.decay_hours ?? 0) > 0).slice(0, 6)
   const maxDecay = Math.max(0.0001, ...topGames.map((g) => g.decay_hours ?? 0))
   const maxLength = Math.max(1, ...lengths.map((l) => l.value))
 
@@ -141,7 +142,9 @@ function StatsPopulated({ range, setRange, reload, summary, sessions }) {
 
   // All-time hours come from the server, where sessions overlapping on two
   // devices count once; a shorter range sums its sessions.
-  const hours = range === 'all' ? summary.total_hours : quick.totalHours
+  // Stats is tracked play only; the dashboard total also counts launcher
+  // imports, so all-time uses tracked_hours (older APIs: total_hours).
+  const hours = range === 'all' ? (summary.tracked_hours ?? summary.total_hours) : quick.totalHours
   const strip = [
     { label: 'Hours played', value: formatHours(hours), unit: 'h' },
     { label: 'Sessions', value: quick.count.toLocaleString() },

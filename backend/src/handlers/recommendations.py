@@ -78,12 +78,13 @@ def _get_recommendations(event: dict, context) -> dict:
     # The Trending screen only needs the shared daily list: skip the genre
     # and LLM tiers (slow, and LLM picks cost money).
     if ((event.get("queryStringParameters") or {}).get("tier")) == "trending":
+        item = get_trending_daily() or {}  # one read for games, age and source
         return {
             "statusCode": 200,
             "headers": {**CORS_HEADERS, "Cache-Control": _CACHE_HEADER},
             "body": json.dumps(
-                {"trending": _trending(), "trending_updated_at": _trending_updated_at(),
-                 "trending_source": _trending_source()},
+                {"trending": item.get("games") or [], "trending_updated_at": item.get("updated_at"),
+                 "trending_source": item.get("source")},
                 cls=_DecimalEncoder,  # ratings are stored as Decimal
             ),
         }
@@ -119,15 +120,6 @@ def _trending() -> list:
         return []
     return item.get("games", []) or []
 
-
-def _trending_updated_at():
-    item = get_trending_daily()
-    return item.get("updated_at") if item else None
-
-
-def _trending_source():
-    item = get_trending_daily()
-    return item.get("source") if item else None
 
 
 # ---------------------------------------------------------------------------

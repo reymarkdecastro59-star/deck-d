@@ -153,7 +153,9 @@ function buildModel(summary, recent, live) {
       lastPlayed: lastPlayed.get(g.game),
     }))
 
+  // Momentum comes from tracked sessions: launcher-imported games have none.
   const momentumRows = games
+    .filter((g) => (g.decay_hours ?? 0) > 0)
     .slice(0, 5)
     .map((g) => ({ game: g, state: stateOf(g), trend: trendFor(g) }))
 

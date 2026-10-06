@@ -189,3 +189,13 @@ def test_steam_ids_must_be_numeric(ddb_table):
     resp = _put([{"external_id": "abc", "name": "", "minutes": 5}], source="steam")
     assert resp["statusCode"] == 400
     assert _put([{"external_id": "413150", "name": "", "minutes": 5}])["statusCode"] == 200
+
+
+def test_imported_hours_counted_once_across_same_title_rows(ddb_table):
+    from shared.imports import merge_into_dashboard
+    rows = [{"game": "Hades", "total_sec": 3600, "total_hours": 1.0, "decay_hours": 1.0},
+            {"game": "Hades", "total_sec": 3600, "total_hours": 1.0, "decay_hours": 0.5}]
+    imported = [{"source": "steam", "external_id": "1", "name": "Hades", "minutes": 600}]
+    merged, extra = merge_into_dashboard(rows, imported)
+    assert extra == 8.0  # 10 h on Steam minus 2 h tracked, once
+    assert sum(r["total_hours"] for r in merged) == 10.0

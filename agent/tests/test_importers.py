@@ -116,9 +116,21 @@ def test_choosing_another_account(runner):
 def test_requested_reimport_runs_once(runner):
     assert importer.maybe_run_requested(None) is False
     assert importer.maybe_run_requested(1) is True
-    last = json.load(open(importer._STATE_PATH))["last_run_at"]
-    assert importer.maybe_run_requested(last) is False  # already done
+    assert importer.maybe_run_requested(1) is False  # already done
     assert runner.call_count == 1
+
+
+def test_failed_request_is_retried_not_dropped(runner, monkeypatch):
+    import time as _time
+    req = int(_time.time()) - 10
+    runner.return_value = MagicMock(status_code=500)
+    assert importer.maybe_run_requested(req) is True
+    assert importer.maybe_run_requested(req) is False  # inside the 5-minute backoff
+    assert "handled_request_at" not in json.load(open(importer._STATE_PATH))
+    monkeypatch.setattr(importer, "_RETRY_AFTER_FAILURE_SEC", 0)
+    runner.return_value = MagicMock(status_code=200, json=lambda: {"import": {"count": 2, "total_hours": 30}})
+    assert importer.maybe_run_requested(req) is True
+    assert json.load(open(importer._STATE_PATH))["handled_request_at"] == req
 
 
 def test_first_time_import_only_once(runner):

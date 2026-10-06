@@ -198,13 +198,28 @@ def run_in_background(on_done=None) -> None:
     threading.Thread(target=_go, daemon=True, name="deckd-import").start()
 
 
+_RETRY_AFTER_FAILURE_SEC = 5 * 60
+
+
 def maybe_run_requested(requested_at: int | None) -> bool:
-    """Run if the web asked for a re-import after our last run."""
+    """Run if the web asked for a re-import we haven't completed yet.
+
+    A request counts as handled only after a successful import; a failed
+    attempt (offline, 5xx) is retried, at most every 5 minutes.
+    """
     if not requested_at:
         return False
-    if int(requested_at) <= int(_load().get("last_run_at") or 0):
+    state = _load()
+    if int(requested_at) <= int(state.get("handled_request_at") or 0):
         return False
-    run_import()
+    last = int(state.get("last_run_at") or 0)
+    if last >= int(requested_at) and time.time() - last < _RETRY_AFTER_FAILURE_SEC:
+        return False  # tried for this request moments ago and failed; back off
+    results = run_import()
+    if any(isinstance(r, dict) and r.get("ok") for r in results.values()):
+        state = _load()
+        state["handled_request_at"] = int(requested_at)
+        _save(state)
     return True
 
 

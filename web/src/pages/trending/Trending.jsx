@@ -8,10 +8,12 @@ import { ErrorState } from '@/app/ui/ErrorState'
 import { PageFrame, PageHeader } from '@/app/ui/PageHeader'
 import { Panel } from '@/app/ui/Panel'
 import { Skeleton } from '@/app/ui/Skeleton'
+import { relativeTime } from '@/lib/format'
 import { RecommendTabs } from './RecommendTabs'
 import { useTrending } from './useTrending'
 
-const loose = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+// Same rule as the backend's canonical.loose (Unicode letters and digits).
+const loose = (s) => (s || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
 
 /**
  * Trending (UX v2 §5.7) — what's popular right now (Steam's most-played
@@ -164,7 +166,9 @@ export default function Trending({ tabsBase = '' }) {
         ) : (
           <>Ranked by today&apos;s peak players on Steam. Updated every 6 hours. Not sponsored.</>
         )}
-        {data?.trending_updated_at && <> Last updated {ago(data.trending_updated_at)}.</>}
+        {data?.trending_updated_at && (
+          <> Last updated {relativeTime(Date.parse(data.trending_updated_at) / 1000)}.</>
+        )}
       </p>
     </PageFrame>
   )
@@ -204,11 +208,4 @@ function compact(n) {
   return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(
     n
   )
-}
-
-function ago(iso) {
-  const sec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
-  if (sec < 3600) return `${Math.max(1, Math.round(sec / 60))} min ago`
-  if (sec < 86400) return `${Math.round(sec / 3600)} h ago`
-  return `${Math.round(sec / 86400)} d ago`
 }

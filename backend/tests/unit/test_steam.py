@@ -187,3 +187,12 @@ def test_disconnect_keeps_imported_data(ddb_table, steam_web):
     assert _call("DELETE", "/steam/link")[0] == 200
     assert imports_module.get_steam_link(USER_ID) is None
     assert len(imports_module.list_imported_games(USER_ID)) == 1
+
+
+def test_successful_sync_clears_a_pending_pc_request(ddb_table, steam_web):
+    steam_web["private"] = True
+    _call("POST", "/steam/link", {"params": _assertion(_connect())})
+    assert imports_module.get_import_request(USER_ID) is not None
+    steam_web["private"] = False  # user made game details public
+    assert _call("POST", "/steam/sync")[0] == 200
+    assert imports_module.get_import_request(USER_ID) is None

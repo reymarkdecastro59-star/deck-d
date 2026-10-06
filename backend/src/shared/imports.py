@@ -22,6 +22,7 @@ from typing import Optional
 import requests
 from boto3.dynamodb.conditions import Key
 
+from .canonical import loose
 from .db import get_table
 
 logger = logging.getLogger(__name__)
@@ -35,11 +36,6 @@ _STEAM_ASSETS = "https://shared.akamai.steamstatic.com/store_item_assets/steam/a
 # Lambda timeout; anything unresolved keeps a placeholder and resolves on
 # the next import (names are cached for everyone, so it converges fast).
 MAX_NAME_LOOKUPS = 40
-
-
-def loose(text: Optional[str]) -> str:
-    """Letters and digits only, for matching titles across launchers."""
-    return "".join(ch for ch in (text or "").lower() if ch.isalnum())
 
 
 def steam_images(appid: str) -> dict:
@@ -204,22 +200,30 @@ def merge_into_dashboard(games: list[dict], imported: list[dict]) -> tuple[list[
     for item in imported:
         by_name.setdefault(loose(item.get("name")), []).append(item)
 
+    # Tracked seconds per title across ALL rows with that title (the same
+    # game can sit in two rows before RAWG resolves both installs).
+    tracked_by_name: dict[str, float] = {}
+    for row in games:
+        key = loose(row.get("game"))
+        tracked_by_name[key] = tracked_by_name.get(key, 0.0) + float(row.get("total_sec") or 0)
+
     extra_sec = 0.0
     used: set[str] = set()
     for row in games:
         key = loose(row.get("game"))
         matches = by_name.get(key) or []
-        tracked_sec = float(row.get("total_sec") or 0)
         row["tracked_hours"] = row.get("total_hours", 0)
-        if not matches:
-            continue
+        if not matches or key in used:
+            continue  # imported hours go to the first (highest-momentum) row only
         used.add(key)
         imported_sec = sum(int(m["minutes"]) for m in matches) * 60
         _annotate(row, matches, imported_sec)
-        if imported_sec > tracked_sec:
-            extra_sec += imported_sec - tracked_sec
-            row["total_sec"] = imported_sec
-            row["total_hours"] = round(imported_sec / 3600, 2)
+        # Hours the launcher saw that DECK'D didn't, counted once per title.
+        extra = max(0.0, imported_sec - tracked_by_name[key])
+        if extra > 0:
+            extra_sec += extra
+            row["total_sec"] = float(row.get("total_sec") or 0) + extra
+            row["total_hours"] = round(row["total_sec"] / 3600, 2)
         if not row.get("background_image"):
             steam = next((m for m in matches if m.get("source") == "steam"), None)
             if steam:

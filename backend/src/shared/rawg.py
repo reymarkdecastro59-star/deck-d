@@ -5,6 +5,8 @@ import time
 from decimal import Decimal
 from typing import Optional
 
+# One title normaliser for cache ids, RAWG matching and import matching.
+from .canonical import loose as _loose
 from .safe_log import safe_error
 
 import requests
@@ -48,11 +50,6 @@ def _api_key() -> str:
 def _normalize(text: str) -> str:
     """Lowercase, strip punctuation loosely — used only for similarity comparison."""
     return text.lower().strip()
-
-
-def _loose(text: str) -> str:
-    """Letters and digits only: "Lurk in the Dark : Prologue" == "Lurk in the Dark: Prologue"."""
-    return "".join(ch for ch in (text or "").lower() if ch.isalnum())
 
 
 def _exe_to_name(exe_lower: str) -> str:

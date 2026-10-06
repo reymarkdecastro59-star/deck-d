@@ -30,8 +30,13 @@ def _exe_lower(session: Session) -> str:
     return (session.game_exe or "").lower()
 
 
-def _loose(text: Optional[str]) -> str:
+def loose(text: Optional[str]) -> str:
+    """Letters and digits only — the one title normaliser for cache ids,
+    RAWG title matching and launcher-import matching."""
     return "".join(ch for ch in (text or "").lower() if ch.isalnum())
+
+
+_loose = loose
 
 
 def meta_applies(meta: Optional[dict], game_name: Optional[str]) -> bool:
